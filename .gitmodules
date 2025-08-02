@@ -1,0 +1,15 @@
+[submodule "dependencies/glfw"]
+	path = dependencies/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "dependencies/assimp"]
+	path = dependencies/assimp
+	url = https://github.com/assimp/assimp.git
+[submodule "dependencies/stb"]
+	path = dependencies/stb
+	url = https://github.com/nothings/stb.git
+[submodule "dependencies/joltc2"]
+	path = dependencies/joltc
+	url = https://github.com/amerkoleci/joltc.git
+[submodule "dependencies/joltc"]
+	path = dependencies/joltc
+	url = https://github.com/amerkoleci/joltc.git

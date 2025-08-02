@@ -1,0 +1,4 @@
+#resource material
+name:test
+shader_path:assets/resources/shaders/test_shader.trs
+texture:assets/resources/textures/test_texture_2.trs,0,1

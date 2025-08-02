@@ -1,0 +1,3 @@
+#resource texture
+path:assets/textures/UI.png
+filter:nearest
