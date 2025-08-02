@@ -1,5 +1,6 @@
 # Overview
 This is a minimal dependency, data oriented game engine written in the C99 standard. Most other off the shelf game engines rely heavily on inheritance based design which can result in bloat and sub-optimal performance. In contrast, this engine has a strong emphasis on data oriented design and it's entity component system. This allows for increased code reuse, easily threadable workloads, better hardware utilization, and higher performance. 
+
 The philosophy of this engine is to minimize bloat and overhead incurred through the use of non-required library features and maticulously manages all function calls. For this reason, C is the primary language since it incentivises explicity management of memory and structures unlike C++ which may obscure how memory is allocated. Additionally, this project uses Vulkan as its main graphics api to allow for higher performant graphics and better hardware usage. 
 
 # Features
@@ -12,7 +13,7 @@ The philosophy of this engine is to minimize bloat and overhead incurred through
 
 # Building
 ```
-    git clone [repo] --recurse-submodule
+    git clone https://github.com/AchtungKatse/SparkEngine --recurse-submodule
     cd spark && mkdir build && cd build
     cmake .. 
     make
