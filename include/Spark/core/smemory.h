@@ -2,6 +2,9 @@
 
 #include "Spark/defines.h"
 
+#define KB 1024
+#define MB (KB * 1024)
+
 typedef enum {
     MEMORY_TAG_UNDEFINED,
     MEMORY_TAG_ENTITY,
@@ -24,7 +27,7 @@ typedef enum {
     MEMORY_TAG_MAX,
 } memory_tag_t;
 
-void initialize_memory(u64* memory_requirement, void* state);
+void initialize_memory();
 void shutdown_memory();
 
 SAPI void*  pvt_sallocate(u64 size, memory_tag_t tag);

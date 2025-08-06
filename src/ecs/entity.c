@@ -38,7 +38,11 @@ void* entity_get_component(struct ecs_world* world, entity_t entity, ecs_index c
     entity_archetype_t* archetype = &world->archetypes.data[record.archetype_index];
 
     if (!ecs_component_set_contains(&archetype->component_set, component)) {
+#ifdef SPARK_DEBUG
         SERROR("Failed to get component '%s' from entity 0x%x.", world->components.data[component].name, entity);
+#else
+        SERROR("Failed to get component from entity 0x%x.", entity);
+#endif
         return NULL;
     }
 

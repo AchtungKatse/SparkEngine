@@ -76,6 +76,10 @@ application_create(game_t* game_inst) {
 
     SASSERT(!game_inst->application_state, "application_create called more than once.");
 
+    // Memory
+    initialize_memory();
+
+    // Application
     game_inst->application_state = sallocate(sizeof(application_state_t), MEMORY_TAG_GAME);
     app_state = game_inst->application_state;
     app_state->status = APPLICATION_STATE_OFF;
@@ -84,13 +88,9 @@ application_create(game_t* game_inst) {
     app_state->width = game_inst->config.start_width;
     app_state->height = game_inst->config.start_height;
 
-    u64 systems_allocator_total_size = 64 * 1024 * 1024; // 64 mb
+    // Systems
+    u64 systems_allocator_total_size = 64 * KB;
     linear_allocator_create(systems_allocator_total_size, 0, &app_state->systems_allocator);
-
-    // Memory
-    initialize_memory(&app_state->memory_system_memory_requirement, 0);
-    app_state->memory_system_state = linear_allocator_allocate(&app_state->systems_allocator, app_state->memory_system_memory_requirement);
-    initialize_memory(&app_state->memory_system_memory_requirement, app_state->memory_system_state);
 
     // Logging
     initialize_logging(&app_state->logging_system_memory_requirement, 0);
@@ -162,6 +162,7 @@ application_create(game_t* game_inst) {
 
 b8 
 application_run() {
+    return true;
     app_state->status |= APPLICATION_STATE_RUNNING;
     clock_start(&app_state->clock);
     clock_update(&app_state->clock);

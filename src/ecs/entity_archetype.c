@@ -105,6 +105,7 @@ void entity_archetype_destroy(entity_archetype_t* archetype) {
 }
 
 void entity_archetype_print_debug(entity_archetype_t* archetype) {
+#ifdef SPARK_DEBUG
     ecs_world_t* world = ecs_world_get();
 
     SDEBUG("ARCHETYPE: %d", archetype->archetype_id);
@@ -112,6 +113,7 @@ void entity_archetype_print_debug(entity_archetype_t* archetype) {
         u32 component_index = archetype->component_set.data[i].value;
         SDEBUG("Component %d: %s (Index: %d)", i, world->components.data[component_index].name, component_index);
     }
+#endif
 }
 
 

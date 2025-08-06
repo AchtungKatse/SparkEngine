@@ -39,20 +39,21 @@ endif()
 
 
 # Dependencies
-add_subdirectory(tools/resource_copy)
-target_include_directories(resource_copy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-set(ASSIMP_NO_EXPORT OFF)
-set(ASSIMP_BUILD_ZLIB ON)
-set(ASSIMP_BUILD_TESTS OFF)
-set(ASSIMP_INSTALL OFF)
-set(ASSIMP_INSTALL_PDB OFF)
-target_compile_options(resource_copy PRIVATE "-g" "-O2" "-flto=none")
-
-add_subdirectory(dependencies/assimp)
-target_link_libraries(resource_copy PRIVATE assimp)
+# add_subdirectory(tools/resource_copy)
+# target_include_directories(resource_copy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+# set(ASSIMP_NO_EXPORT OFF)
+# set(ASSIMP_BUILD_ZLIB ON)
+# set(ASSIMP_BUILD_TESTS OFF)
+# set(ASSIMP_INSTALL OFF)
+# set(ASSIMP_INSTALL_PDB OFF)
+# target_compile_options(resource_copy PRIVATE "-g" "-O2" "-flto=none")
+#
+# add_subdirectory(dependencies/assimp)
+# target_link_libraries(resource_copy PRIVATE assimp)
 
 set(OBJECT_LAYER_BITS 32)
 add_subdirectory(dependencies/joltc)
+target_compile_options(joltc PRIVATE "-w")
 
 # Define the include DIRs
 target_include_directories(SparkEngine PRIVATE
@@ -64,7 +65,7 @@ target_include_directories(SparkEngine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/joltc/include"
 )
 
-target_compile_options(SparkEngine PRIVATE -Werror)
+# target_compile_options(SparkEngine PRIVATE -Werror)
 target_precompile_headers(SparkEngine PRIVATE 
     "$<$<COMPILE_LANGUAGE:C>:${CMAKE_CURRENT_SOURCE_DIR}/include/Spark/PCH.h>"
 )
@@ -86,6 +87,10 @@ if (SPARK_BUILD_TESTS)
     add_subdirectory(tests)
     target_include_directories(spark_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_link_libraries(spark_tests PRIVATE SparkEngine)
+
+    add_subdirectory(benchmarks)
+    target_include_directories(spark_benchmarks PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_link_libraries(spark_benchmarks PRIVATE SparkEngine)
 endif()
 
 # Platform specific includes

@@ -58,7 +58,9 @@ void ecs_world_shutdown() {
 ecs_component_id ecs_world_component_define(ecs_world_t* world, const char* name, u32 stride) {
     ecs_component_t component = {
         .stride = stride,
+#ifdef SPARK_DEBUG
         .name = name,
+#endif
     };
     darray_entity_archetype_ptr_create(5, &component.archetypes);
 

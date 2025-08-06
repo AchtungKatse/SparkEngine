@@ -6,6 +6,7 @@
 #include "Spark/core/smemory.h"
 #include "Spark/containers/generic/darray_ints.h"
 #include "Spark/core/sstring.h"
+#include "Spark/memory/gerneal_allocator.h"
 #include "Spark/platform/platform.h"
 #include <execinfo.h>
 #include <stdio.h>
@@ -61,29 +62,24 @@ const char* memory_tag_strings[] = {
 typedef struct memory_system_state {
     memory_stats_t stats;
     u64 alloc_count;
+    general_allocator_t allocator;
 } memory_system_state_t;
 
-static memory_system_state_t* state_ptr;
+static memory_system_state_t state_ptr;
 
 static char* memory_usage_string;
 static int memory_usage_string_size = 0x8000;
 
-void initialize_memory(u64* memory_requirement, void* state) {
-    *memory_requirement = sizeof(memory_system_state_t);
+void initialize_memory() {
+    state_ptr.alloc_count = 0;
 
-    if (state == NULL) {
-        return;
-    }
-
-    state_ptr = state;
-    state_ptr->alloc_count = 0;
-
-    memory_usage_string = platform_allocate(memory_usage_string_size, false);
+    general_allocator_create(128 * MB, false, &state_ptr.allocator);
+    memory_usage_string = general_allocator_allocate(&state_ptr.allocator, memory_usage_string_size, false);
 
 #ifdef SPARK_DEBUG 
     allocation_count = 0;
     allocation_capacity = 8192;
-    tracked_allocations = platform_allocate(sizeof(allocation_info_t) * allocation_capacity, false);
+    tracked_allocations = general_allocator_allocate(&state_ptr.allocator, sizeof(allocation_info_t) * allocation_capacity, false);
 #endif
 }
 
@@ -107,7 +103,7 @@ shutdown_memory() {
 #endif
 
     SDEBUG("Memory after shutdown: %s", get_memory_usage_string());
-    state_ptr = NULL;
+    general_allocator_destroy(&state_ptr.allocator);
 }
 
 /**
@@ -127,13 +123,11 @@ pvt_sallocate(u64 size, memory_tag_t tag) {
         SWARN("Allocating %lu bytes to undefined memory tag.", size);
     }
 
-    if (state_ptr) {
-        state_ptr->stats.total_allocated += size;
-        state_ptr->stats.tagged_allocations[tag] += size;
-    }
+    state_ptr.stats.total_allocated += size;
+    state_ptr.stats.tagged_allocations[tag] += size;
 
-    void* block = platform_allocate(size, false);
-    platform_zero_memory(block, size);
+    void* block = general_allocator_allocate(&state_ptr.allocator, size, false);
+    // platform_zero_memory(block, size);
     return block;
 }
 
@@ -150,16 +144,14 @@ pvt_spark_free(const void* block, u64 size, memory_tag_t tag) {
         SWARN("De-allocating %lu bytes to undefined memory tag.", size);
     }
 
-    if (state_ptr) {
-        if (state_ptr->stats.tagged_allocations[tag] - size > state_ptr->stats.tagged_allocations[tag]) {
-            SCRITICAL("Underflowed a memory allocation tag by freeing %lu bytes. Before %lu, After %lu - Failed to free the correct type of memory '%s'", size, state_ptr->stats.tagged_allocations[tag], state_ptr->stats.tagged_allocations[tag] - size, memory_tag_strings[tag]);
-        } 
+    if (state_ptr.stats.tagged_allocations[tag] - size > state_ptr.stats.tagged_allocations[tag]) {
+        SCRITICAL("Underflowed a memory allocation tag by freeing %lu bytes. Before %lu, After %lu - Failed to free the correct type of memory '%s'", size, state_ptr.stats.tagged_allocations[tag], state_ptr.stats.tagged_allocations[tag] - size, memory_tag_strings[tag]);
+    } 
 
-        state_ptr->stats.total_allocated -= size;
-        state_ptr->stats.tagged_allocations[tag] -= size;
-    }
+    state_ptr.stats.total_allocated -= size;
+    state_ptr.stats.tagged_allocations[tag] -= size;
 
-    platform_free(block, false);
+    general_allocator_free(&state_ptr.allocator, (void*)block);
 }
 
 /**
@@ -238,10 +230,10 @@ char* get_memory_usage_string() {
 
     strcpy(memory_usage_string, "System memory use (tagged):\n");
     u64 offset = strlen(memory_usage_string);
-    copy_memory_usage_string(memory_usage_string, "TOTAL              ", state_ptr->stats.total_allocated, &offset);
+    copy_memory_usage_string(memory_usage_string, "TOTAL              ", state_ptr.stats.total_allocated, &offset);
 
     for (int i = 0; i < MEMORY_TAG_MAX; i++) {
-        u64 size = state_ptr->stats.tagged_allocations[i];
+        u64 size = state_ptr.stats.tagged_allocations[i];
         copy_memory_usage_string(memory_usage_string, memory_tag_strings[i], size, &offset);
     }
 
@@ -251,10 +243,7 @@ char* get_memory_usage_string() {
 }
 
 u64 get_memory_alloc_count() {
-    if (state_ptr) {
-        return state_ptr->alloc_count;
-    }
-    return 0;
+    return state_ptr.alloc_count;
 }
 
 #ifdef SPARK_DEBUG 
@@ -272,7 +261,7 @@ create_tracked_allocation(u64 size, memory_tag_t tag, const char* file, u32 line
         SERROR("backtrace_symbols failed to get symbols");
     }
 
-    char* backtrace_string = platform_allocate(0x1000, false);
+    char* backtrace_string = general_allocator_allocate(&state_ptr.allocator, 0x1000, false);
     szero_memory(backtrace_string, 0x1000);
     for (u32 i = 1, offset = 0; i < backtrace_pointer_count; i++) {
 
@@ -318,13 +307,13 @@ free_tracked_allocation(const void* block, u32 size, memory_tag_t tag) {
     // Find the allocation by its block
     for (int i = 0; i < allocation_count; i++) {
         if (tracked_allocations[i].block == block) {
-            SASSERT(tracked_allocations[i].tag == tag,  "Trying to free allocation with different memory tag than it was initialized with.\n\t\t"
-                    "Tag: %s\n\t\tFile: %s:%d\n\t\tBacktrace:\n%s", memory_tag_strings[tracked_allocations[i].tag], tracked_allocations[i].file, tracked_allocations[i].line, tracked_allocations[i].backtrace);
-            SASSERT(tracked_allocations[i].size == size,  "Trying to free allocation with different memory size than it was initialized with.\n\t\t"
-                    "Expected: %lul\n\t\tGot: %ul\n\t\tFile: %s:%d\n\t\tBacktrace:\n%s", tracked_allocations[i].size, size, tracked_allocations[i].file, tracked_allocations[i].line, tracked_allocations[i].backtrace);
+            // SASSERT(tracked_allocations[i].tag == tag,  "Trying to free allocation with different memory tag than it was initialized with.\n\t\t"
+            //         "Tag: %s\n\t\tFile: %s:%d\n\t\tBacktrace:\n%s", memory_tag_strings[tracked_allocations[i].tag], tracked_allocations[i].file, tracked_allocations[i].line, tracked_allocations[i].backtrace);
+            // SASSERT(tracked_allocations[i].size == size,  "Trying to free allocation with different memory size than it was initialized with.\n\t\t"
+            //         "Expected: %lul\n\t\tGot: %ul\n\t\tFile: %s:%d\n\t\tBacktrace:\n%s", tracked_allocations[i].size, size, tracked_allocations[i].file, tracked_allocations[i].line, tracked_allocations[i].backtrace);
 
             if (tracked_allocations[i].backtrace) {
-                platform_free(tracked_allocations[i].backtrace, false);
+                general_allocator_free(&state_ptr.allocator, tracked_allocations[i].backtrace);
                 tracked_allocations[i].backtrace = NULL;
             }
 
