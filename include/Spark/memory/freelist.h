@@ -11,11 +11,11 @@ typedef struct freelist_block {
 
 
 typedef struct freelist {
-    void* memory;
-    u64 memory_size;
     struct freelist_block* first_block;
     struct freelist_block* first_free_block;
     struct freelist* next_allocator;
+    void* memory;
+    u64 memory_size;
     b8 aligned;
 } freelist_t;
 

@@ -44,10 +44,10 @@ void* freelist_allocate(freelist_t* allocator, u64 size, memory_tag_t tag) {
     freelist_block_t* block = allocator->first_block;
 
     u32 required_size = size + sizeof(freelist_block_t); // Add freelist_block_t size for footer block
-    while (block) {
-        if (block->size == 0) {
-            break;
-        }
+    while (block->size) {
+        // if (!block->size) {
+        //     break;
+        // }
 
         // Check if block can contain allocation
         if (block->size < required_size) {
@@ -58,8 +58,8 @@ void* freelist_allocate(freelist_t* allocator, u64 size, memory_tag_t tag) {
         // It can
         // Split the block into the allocation and a new block
         const u32 remaining_size = block->size - size - sizeof(freelist_block_t);
+        freelist_block_t* new_block = ((void*)block) + sizeof(freelist_block_t) * 2 + size;
         if (sizeof(freelist_block_t) < remaining_size) {
-            freelist_block_t* new_block = ((void*)block) + sizeof(freelist_block_t) * 2 + size;
             new_block->size = remaining_size - sizeof(freelist_block_t);
         }
 
@@ -92,7 +92,6 @@ void freelist_free(freelist_t* allocator, void* address) {
     freelist_block_t* block = address - sizeof(freelist_block_t);
     freelist_block_t* block_header = address + block->size;
     SASSERT(block->allocated, "Cannot free unallocated allocation.");
-    // SDEBUG("\n\nFreeing: 0x%x", ((void*)block - allocator->memory) / 0x30);
 
     // Convert allocation to block
     enum coalesce_state {
@@ -105,19 +104,10 @@ void freelist_free(freelist_t* allocator, void* address) {
     freelist_block_t* previous_block = address - sizeof(freelist_block_t) * 2;
     freelist_block_t* next_block = address + block->size + sizeof(freelist_block_t);
 
-    // SDEBUG("Block          : Addr: %p, Size: 0x%x, Allocated: %d", (void*)block - allocator->memory, block->size, block->allocated);
-    // SDEBUG("Initial Offsets: %p, %p", (void*)block - allocator->memory, (void*)block_header - allocator->memory + sizeof(freelist_block_t));
-    // SDEBUG("Previous Block : Addr: %p, Size: 0x%x, Allocated: %d", (void*)previous_block - allocator->memory, previous_block->size, previous_block->allocated);
-    // SDEBUG("Next Block     : Addr: %p, Size: 0x%x, Allocated: %d", (void*)next_block - allocator->memory, next_block->size, next_block->allocated);
 
     enum coalesce_state state = 0;
-    if (!previous_block->allocated && block != allocator->memory) {
-        state |= coalesce_state_previous;
-    }
-
-    if (!next_block->allocated) {
-        state |= coalesce_state_next;
-    }
+    state |= coalesce_state_previous * (!previous_block->allocated && block != allocator->memory);
+    state |= !next_block->allocated * coalesce_state_next;
 
     switch (state) {
         case coalesce_state_default:
@@ -139,7 +129,6 @@ void freelist_free(freelist_t* allocator, void* address) {
             block->size += next_block->size + sizeof(freelist_block_t) * 2;
             block_header = (void*)block_header + next_block->size + sizeof(freelist_block_t) * 2;
             block_header->size = block->size;
-            block_header->allocated = false;
             break;
         case coalesce_state_all:
             // SDEBUG("Coalesce all");
@@ -148,11 +137,7 @@ void freelist_free(freelist_t* allocator, void* address) {
             block = previous_block;
             block_header = (void*)block_header + next_block->size + sizeof(freelist_block_t) * 2;
             block_header->size = block->size;
-            block_header->allocated = false;
             break;
     }
-
-    // SDEBUG("New Size: 0x%x / 0x%x", block->size, ((void*)block_header - allocator->memory + sizeof(freelist_block_t)) - ((void*)block - allocator->memory) - sizeof(freelist_block_t) * 2);
-    // SDEBUG("New Offsets: %p, %p", (void*)block - allocator->memory, (void*)block_header - allocator->memory + sizeof(freelist_block_t));
 }
 
