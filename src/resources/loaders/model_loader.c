@@ -5,6 +5,7 @@
 #include "Spark/ecs/components/entity_child.h"
 #include "Spark/ecs/components/entity_parent.h"
 #include "Spark/ecs/ecs_world.h"
+#include "Spark/ecs/entity.h"
 #include "Spark/memory/block_allocator.h"
 #include "Spark/memory/linear_allocator.h"
 #include "Spark/platform/filesystem.h"
@@ -202,16 +203,8 @@ resource_t create_model_from_config(model_config_t* config) {
 entity_t load_model_entity(ecs_world_t* world, model_t* model, entity_t parent, u32 material_count, material_t** materials) {
     entity_t e = entity_create(world);
 
-    if (model->child_count > 0) {
-        entity_child_t children = {};
-        darray_entity_create(model->child_count, &children.children);
-        ENTITY_SET_COMPONENT(world, e, entity_child_t, children);
-    }
-
     if (parent != INVALID_ID) {
-        entity_child_t* children = ENTITY_GET_COMPONENT(world, parent, entity_child_t);
-        darray_entity_push(&children->children, e);
-        ENTITY_SET_COMPONENT(world, e, entity_parent_t, (entity_parent_t) { parent });
+        entity_add_child(world, parent, e);
     } 
 
     if (model->mesh.internal_index != INVALID_ID_U16) {

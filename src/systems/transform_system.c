@@ -1,3 +1,4 @@
+#include "Spark/defines.h"
 #include "Spark/ecs/components/entity_child.h"
 #include "Spark/ecs/components/entity_parent.h"
 #include "Spark/ecs/entity.h"
@@ -87,8 +88,10 @@ void parent_entity(ecs_world_t* world, mat4 parent_matrix, entity_t child, b8 fo
         return;
     }
 
-    for (u32 i = 0; i < children->children.count; i++) {
-        parent_entity(world, world_matrix, children->children.data[i], force_dirty);
+    entity_t next_child = children->child;
+    while (next_child != INVALID_ID) {
+        parent_entity(world, world_matrix, children->child, force_dirty);
+        next_child = children->next_sibling;
     }
 }
 
@@ -127,8 +130,11 @@ void create_world_to_local_matrix(ecs_iterator_t* iterator) {
     // Check for children
     entity_child_t* children = iterator->archetype->columns.data[child_index].data;
     for (u32 i = 0; i < iterator->entity_count; i++) {
-        for (u32 c = 0; c < children[i].children.count; c++) {
-            parent_entity(iterator->world, locals[i].value, children[i].children.data[c], false);
+        entity_child_t* child = &children[i];
+        entity_t next_child = child->child;
+        while (next_child != INVALID_ID) {
+            parent_entity(iterator->world, locals[i].value, child->child, false);
+            next_child = child->next_sibling;
         }
     }
 }

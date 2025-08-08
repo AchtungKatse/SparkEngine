@@ -1,0 +1,26 @@
+#pragma once
+
+#include "Spark/core/smemory.h"
+
+#define GENERAL_ALLOCATOR_DEFAULT_SIZE     256 * MB
+
+typedef struct freelist_block {
+    u32 size;
+    b32 allocated;
+} freelist_block_t;
+
+
+typedef struct freelist {
+    void* memory;
+    u64 memory_size;
+    struct freelist_block* first_block;
+    struct freelist_block* first_free_block;
+    struct freelist* next_allocator;
+    b8 aligned;
+} freelist_t;
+
+void freelist_create(u64 size, b8 alligned, freelist_t* out_allocator);
+void freelist_destroy(freelist_t* allocator);
+
+void* freelist_allocate(freelist_t* allocator, u64 size, memory_tag_t tag);
+void freelist_free(freelist_t* allocator, void* address);

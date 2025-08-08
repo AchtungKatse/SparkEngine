@@ -39,17 +39,17 @@ endif()
 
 
 # Dependencies
-# add_subdirectory(tools/resource_copy)
-# target_include_directories(resource_copy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-# set(ASSIMP_NO_EXPORT OFF)
-# set(ASSIMP_BUILD_ZLIB ON)
-# set(ASSIMP_BUILD_TESTS OFF)
-# set(ASSIMP_INSTALL OFF)
-# set(ASSIMP_INSTALL_PDB OFF)
-# target_compile_options(resource_copy PRIVATE "-g" "-O2" "-flto=none")
-#
-# add_subdirectory(dependencies/assimp)
-# target_link_libraries(resource_copy PRIVATE assimp)
+add_subdirectory(tools/resource_copy)
+target_include_directories(resource_copy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+set(ASSIMP_NO_EXPORT OFF)
+set(ASSIMP_BUILD_ZLIB ON)
+set(ASSIMP_BUILD_TESTS OFF)
+set(ASSIMP_INSTALL OFF)
+set(ASSIMP_INSTALL_PDB OFF)
+target_compile_options(resource_copy PRIVATE "-g" "-O2" "-flto=none")
+
+add_subdirectory(dependencies/assimp)
+target_link_libraries(resource_copy PRIVATE assimp)
 
 set(OBJECT_LAYER_BITS 32)
 add_subdirectory(dependencies/joltc)

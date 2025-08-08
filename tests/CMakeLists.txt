@@ -5,4 +5,4 @@ cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 project(spark_tests)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_executable(${PROJECT_NAME} container_tests.c)
+add_executable(${PROJECT_NAME} tests.c hashmap_tests.c allocator_tests.c)

@@ -4,14 +4,14 @@
 #include "Spark/core/logging.h"
 
 #include "Spark/containers/unordered_map.h"
-#include "Spark/memory/gerneal_allocator.h"
+#include "Spark/memory/freelist.h"
 #include "Spark/utils/hashing.h"
 #include <stdlib.h>
 
 #define ALLOCATION_SIZE (10 * MB)
 
 static u64 allocation_total = 0;
-static general_allocator_t allocator;
+static freelist_t allocator;
 SINLINE void general_allocator_benchmark();
 SINLINE void malloc_benchmark();
 
@@ -33,12 +33,12 @@ SINLINE void malloc_benchmark();
 s32 main(s32 argc, char** argv) {
     // Setup
     const u32 iteration_count = 1000000000;
-    general_allocator_create(256 * MB, false, &allocator);
+    freelist_create(256 * MB, false, &allocator);
 
     // Call genearal_allocator_allocate once to get it into cache since the first call will always be in ram
     // This levels the playing field between this and malloc
-    void* a = general_allocator_allocate(&allocator, ALLOCATION_SIZE, MEMORY_TAG_ARRAY);
-    general_allocator_free(&allocator, a);
+    void* a = freelist_allocate(&allocator, ALLOCATION_SIZE, MEMORY_TAG_ARRAY);
+    freelist_free(&allocator, a);
     void* b = malloc(ALLOCATION_SIZE);
     free(b);
 
@@ -53,8 +53,8 @@ SINLINE void malloc_benchmark() {
 }
 
 SINLINE void general_allocator_benchmark() {
-    void* value = general_allocator_allocate(&allocator, ALLOCATION_SIZE, MEMORY_TAG_ARRAY);
+    void* value = freelist_allocate(&allocator, ALLOCATION_SIZE, MEMORY_TAG_ARRAY);
     allocation_total += (u64)value;
-    general_allocator_free(&allocator, value);
+    freelist_free(&allocator, value);
 }
 

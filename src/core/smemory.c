@@ -5,8 +5,9 @@
 
 #include "Spark/core/smemory.h"
 #include "Spark/containers/generic/darray_ints.h"
+#include "Spark/core/logging.h"
 #include "Spark/core/sstring.h"
-#include "Spark/memory/gerneal_allocator.h"
+#include "Spark/memory/freelist.h"
 #include "Spark/platform/platform.h"
 #include <execinfo.h>
 #include <stdio.h>
@@ -62,7 +63,7 @@ const char* memory_tag_strings[] = {
 typedef struct memory_system_state {
     memory_stats_t stats;
     u64 alloc_count;
-    general_allocator_t allocator;
+    freelist_t allocator;
 } memory_system_state_t;
 
 static memory_system_state_t state_ptr;
@@ -73,13 +74,13 @@ static int memory_usage_string_size = 0x8000;
 void initialize_memory() {
     state_ptr.alloc_count = 0;
 
-    general_allocator_create(128 * MB, false, &state_ptr.allocator);
-    memory_usage_string = general_allocator_allocate(&state_ptr.allocator, memory_usage_string_size, false);
+    freelist_create(128 * MB, false, &state_ptr.allocator);
+    memory_usage_string = freelist_allocate(&state_ptr.allocator, memory_usage_string_size, false);
 
 #ifdef SPARK_DEBUG 
     allocation_count = 0;
     allocation_capacity = 8192;
-    tracked_allocations = general_allocator_allocate(&state_ptr.allocator, sizeof(allocation_info_t) * allocation_capacity, false);
+    tracked_allocations = freelist_allocate(&state_ptr.allocator, sizeof(allocation_info_t) * allocation_capacity, false);
 #endif
 }
 
@@ -103,7 +104,7 @@ shutdown_memory() {
 #endif
 
     SDEBUG("Memory after shutdown: %s", get_memory_usage_string());
-    general_allocator_destroy(&state_ptr.allocator);
+    freelist_destroy(&state_ptr.allocator);
 }
 
 /**
@@ -126,8 +127,8 @@ pvt_sallocate(u64 size, memory_tag_t tag) {
     state_ptr.stats.total_allocated += size;
     state_ptr.stats.tagged_allocations[tag] += size;
 
-    void* block = general_allocator_allocate(&state_ptr.allocator, size, false);
-    // platform_zero_memory(block, size);
+    void* block = freelist_allocate(&state_ptr.allocator, size, false);
+    platform_zero_memory(block, size);
     return block;
 }
 
@@ -151,7 +152,7 @@ pvt_spark_free(const void* block, u64 size, memory_tag_t tag) {
     state_ptr.stats.total_allocated -= size;
     state_ptr.stats.tagged_allocations[tag] -= size;
 
-    general_allocator_free(&state_ptr.allocator, (void*)block);
+    freelist_free(&state_ptr.allocator, (void*)block);
 }
 
 /**
@@ -261,7 +262,7 @@ create_tracked_allocation(u64 size, memory_tag_t tag, const char* file, u32 line
         SERROR("backtrace_symbols failed to get symbols");
     }
 
-    char* backtrace_string = general_allocator_allocate(&state_ptr.allocator, 0x1000, false);
+    char* backtrace_string = freelist_allocate(&state_ptr.allocator, 0x1000, false);
     szero_memory(backtrace_string, 0x1000);
     for (u32 i = 1, offset = 0; i < backtrace_pointer_count; i++) {
 
@@ -313,7 +314,7 @@ free_tracked_allocation(const void* block, u32 size, memory_tag_t tag) {
             //         "Expected: %lul\n\t\tGot: %ul\n\t\tFile: %s:%d\n\t\tBacktrace:\n%s", tracked_allocations[i].size, size, tracked_allocations[i].file, tracked_allocations[i].line, tracked_allocations[i].backtrace);
 
             if (tracked_allocations[i].backtrace) {
-                general_allocator_free(&state_ptr.allocator, tracked_allocations[i].backtrace);
+                freelist_free(&state_ptr.allocator, tracked_allocations[i].backtrace);
                 tracked_allocations[i].backtrace = NULL;
             }
 

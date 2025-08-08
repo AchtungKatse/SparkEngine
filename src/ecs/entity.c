@@ -6,6 +6,7 @@
 #include "Spark/ecs/ecs_world.h"
 #include "Spark/math/mat4.h"
 #include "Spark/types/transforms.h"
+#include <stdlib.h>
 
 // =========================
 // Private functions
@@ -34,6 +35,11 @@ b8 entity_has_component(struct ecs_world* world, entity_t entity, ecs_index comp
 }
 
 void* entity_get_component(struct ecs_world* world, entity_t entity, ecs_index component) {
+    if (entity == INVALID_ID) {
+        SWARN("Trying to get component from invalid entity id");
+        return NULL;
+    }
+
     entity_record_t record = world->records.data[entity];
     entity_archetype_t* archetype = &world->archetypes.data[record.archetype_index];
 
@@ -214,35 +220,57 @@ void entity_add_transforms(ecs_world_t* world, entity_t entity, vec3 position, v
 
 
 void entity_add_child(struct ecs_world* world, entity_t parent, entity_t child) {
-    if (ENTITY_HAS_COMPONENT(world, child, entity_parent_t)) {
-        SDEBUG("Entity has parent already.");
-        // Remove from parent
-        entity_parent_t* old_parent = ENTITY_GET_COMPONENT(world, child, entity_parent_t);
-        entity_child_t* old_child_array = ENTITY_GET_COMPONENT(world, old_parent->parent, entity_child_t);
-        // TODO: Bruteforce slow :(
-        for (u32 i = 0; i < old_child_array->children.count; i++) {
-            if (old_child_array->children.data[i] == child) {
-                darray_entity_pop(&old_child_array->children, i);
-                SDEBUG("Removed old child parent");
-                break;
-            }
+    entity_parent_t* parent_component = NULL;
+
+    // Maintain linked list of children by updating previous child's next child to this child's next child
+    entity_child_t* child_data = NULL; 
+    if (ENTITY_TRY_GET_COMPONENT(world, child, entity_child_t, &child_data)) {
+        if (child_data->previous_sibling != INVALID_ID) {
+            entity_child_t* previous_sibling = ENTITY_GET_COMPONENT(world, child_data->previous_sibling, entity_child_t);
+            previous_sibling->next_sibling = child_data->next_sibling;
         }
-    } else {
-        SDEBUG("Entity %d does not have existing parent (new parent %d)", child, parent);
     }
 
-    if (!ENTITY_HAS_COMPONENT(world, parent, entity_child_t)) {
-        entity_child_t _children = { };
-        darray_entity_create(4, &_children.children);
-        darray_entity_push(&_children.children, child);
-        ENTITY_SET_COMPONENT(world, parent, entity_child_t, _children);
-        ENTITY_SET_COMPONENT(world, child, entity_parent_t, { parent });
-        return;
+    // Check if this is the first child of the parent and set to next sibling
+    entity_child_t* parent_children = NULL;
+    if (ENTITY_TRY_GET_COMPONENT(world, parent_component->parent, entity_child_t, parent_children)) {
+        if (parent_children->child == child) {
+            parent_children->child = child_data->next_sibling;
+        }
     }
+    ENTITY_SET_COMPONENT(world, child, entity_parent_t, { .parent = parent} );
 
-    entity_child_t* children = ENTITY_GET_COMPONENT(world, parent, entity_child_t);
-    darray_entity_push(&children->children, child);
+    // If the child has an existing parent
+    if (ENTITY_TRY_GET_COMPONENT(world, child, entity_parent_t, &parent_component)) {
+        // Override the previous parent
+        parent_component->parent = parent;
 
-    ENTITY_SET_COMPONENT(world, child, entity_parent_t, { parent });
+        // Set the new child data
+        entity_child_t* children = NULL;
+        if (ENTITY_TRY_GET_COMPONENT(world, parent, entity_child_t, &children)) {
+            // Update first child's previous child to this child
+            entity_child_t* current_first_child = NULL;
+            if (ENTITY_TRY_GET_COMPONENT(world, children->child, entity_child_t, &current_first_child)) {
+                current_first_child->previous_sibling = child;
+            }
+
+            // Set first child as new child
+            const entity_child_t new_child = {
+                .child = INVALID_ID,
+                .next_sibling = children->child,
+                .previous_sibling = INVALID_ID,
+            };
+            ENTITY_SET_COMPONENT(world, child, entity_child_t, new_child);
+            children->child = child;
+        } else {
+            const entity_child_t new_child = {
+                .child = INVALID_ID,
+                .next_sibling = INVALID_ID,
+                .previous_sibling = INVALID_ID,
+            };
+
+            ENTITY_SET_COMPONENT(world, child, entity_child_t, new_child);
+        }
+    }
 }
 
