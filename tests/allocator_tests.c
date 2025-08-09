@@ -107,9 +107,9 @@ void freelist_test() {
     }
 
     // Overflow test
-    {
+    for (u32 i = 1; i <= 16; i++) {
         u32 alloc_size = 1024;
-        const u32 max_int_count = memory_size / (alloc_size) * 10;
+        const u32 max_int_count = memory_size / (alloc_size) * i;
         int* ints[max_int_count];
 
         for (u32 i = 0; i < max_int_count; i++) {
@@ -117,7 +117,7 @@ void freelist_test() {
         }
 
         for (u32 i = 0; i < max_int_count * 50; i++) {
-            u32 index = random() % int_count;
+            u32 index = random() % max_int_count;
             if (ints[index]) {
                 freelist_free(&allocator, ints[index]);
                 ints[index] = NULL;

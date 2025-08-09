@@ -10,9 +10,10 @@
 #include <stdlib.h>
 
 #define ALLOCATION_SIZE (16)
-#define RAND_ALLOC_COUNT 2000
+#define RAND_ALLOC_COUNT 1000
 
 u32 rand_vector[RAND_ALLOC_COUNT];
+u32* rand_alloc_ints[RAND_ALLOC_COUNT];
 
 static u64 allocation_total = 0;
 static freelist_t allocator;
@@ -44,18 +45,19 @@ void init_random_vector() {
         rand_vector[i] = i;
     }
     
-    for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        int index = random() % RAND_ALLOC_COUNT;
-
-        u32 temp = rand_vector[index];
-        rand_vector[index] = rand_vector[i];
-        rand_vector[i] = temp;
-    }
+    // for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
+    //     int index = random() % RAND_ALLOC_COUNT;
+    //
+    //     u32 temp = rand_vector[index];
+    //     rand_vector[index] = rand_vector[i];
+    //     rand_vector[i] = temp;
+    // }
 }
 
 s32 main(s32 argc, char** argv) {
     // Setup
-    freelist_create(RAND_ALLOC_COUNT * ALLOCATION_SIZE * 1600, false, &allocator);
+    freelist_create(512 * MB, false, &allocator);
+    freelist_print_debug_allocations(&allocator);
     init_random_vector();
 
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
@@ -70,10 +72,10 @@ s32 main(s32 argc, char** argv) {
 
 #define BENCHMARK_FUNCTION_COUNT 4
     u32 iteration_counts[BENCHMARK_FUNCTION_COUNT] = {
-        1000000,
-        10000,
-        1000000,
-        10000,
+        1000,
+        100,
+        1000,
+        100,
     };
 
     void (*benchmark_functoins[BENCHMARK_FUNCTION_COUNT])() = {
@@ -100,7 +102,7 @@ s32 main(s32 argc, char** argv) {
     }
 
     STRACE("Starting...");
-    const u32 test_count = 1;
+    const u32 test_count = 10;
     for (u32 i = 0; i < test_count; i++) {
         for (u32 f = 0; f < BENCHMARK_FUNCTION_COUNT; f++) {
             double time = run_benchmark(benchmark_functoins[f], iteration_counts[f], benchmark_function_names[f]);
@@ -108,6 +110,8 @@ s32 main(s32 argc, char** argv) {
             min_times[f] = smin(min_times[f], time);
             max_times[f] = smax(max_times[f], time);
         }
+
+        freelist_print_debug_allocations(&allocator);
     }
 
     for (u32 i = 0; i < BENCHMARK_FUNCTION_COUNT; i++) {
@@ -130,21 +134,19 @@ SINLINE void freelist_benchmark() {
 }
 
 SINLINE void malloc_randalloc_benchmark() {
-    u32* ints[RAND_ALLOC_COUNT];
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        ints[i] = malloc(ALLOCATION_SIZE);
+        rand_alloc_ints[i] = malloc(ALLOCATION_SIZE);
     }
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        free(ints[rand_vector[i]]);
+        free(rand_alloc_ints[rand_vector[i]]);
     }
 }
 
 SINLINE void freelist_randalloc_benchmark() {
-    u32* ints[RAND_ALLOC_COUNT];
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        ints[i] = freelist_allocate(&allocator, ALLOCATION_SIZE);
+        rand_alloc_ints[i] = freelist_allocate(&allocator, ALLOCATION_SIZE);
     }
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        freelist_free(&allocator, ints[rand_vector[i]]);
+        freelist_free(&allocator, rand_alloc_ints[rand_vector[i]]);
     }
 }
