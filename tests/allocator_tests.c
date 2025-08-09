@@ -93,6 +93,12 @@ void freelist_test() {
             }
         }
 
+        for (u32 i = 0; i < int_count; i++) {
+            if (rand_ints[i]) {
+                freelist_free(&allocator, rand_ints[i]);
+            }
+        }
+
         if (block.size != allocator.first_block->size) {
             SERROR("Failed to defragment general allocator. Expected size of 0x%x, got 0x%x", block.size, allocator.first_block->size);
         } else {
@@ -102,15 +108,25 @@ void freelist_test() {
 
     // Overflow test
     {
-        const u32 max_int_count = memory_size / (0x10 + sizeof(freelist_block_t) * 2) + 2;
+        u32 alloc_size = 1024;
+        const u32 max_int_count = memory_size / (alloc_size) * 10;
         int* ints[max_int_count];
 
         for (u32 i = 0; i < max_int_count; i++) {
-            ints[i] = freelist_allocate(&allocator, sizeof(int));
+            ints[i] = freelist_allocate(&allocator, alloc_size);
         }
 
+        for (u32 i = 0; i < max_int_count * 50; i++) {
+            u32 index = random() % int_count;
+            if (ints[index]) {
+                freelist_free(&allocator, ints[index]);
+                ints[index] = NULL;
+            }
+        }
         for (u32 i = 0; i < max_int_count; i++) {
-            freelist_free(&allocator, ints[i]);
+            if (ints[i]) {
+                freelist_free(&allocator, ints[i]);
+            }
         }
 
         if (block.size != allocator.first_block->size) {

@@ -2,8 +2,8 @@
 
 #include "Spark/defines.h"
 
-#define KB 1024
-#define MB (KB * 1024)
+#define KB 1024u
+#define MB (KB * 1024u)
 
 typedef enum {
     MEMORY_TAG_UNDEFINED,

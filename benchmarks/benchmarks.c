@@ -9,8 +9,8 @@
 #include "Spark/utils/hashing.h"
 #include <stdlib.h>
 
-#define ALLOCATION_SIZE (KB)
-#define RAND_ALLOC_COUNT 1000
+#define ALLOCATION_SIZE (16)
+#define RAND_ALLOC_COUNT 2000
 
 u32 rand_vector[RAND_ALLOC_COUNT];
 
@@ -38,39 +38,42 @@ double run_benchmark(void (*benchmark_function)(), u32 iteration_count, const ch
     return iteration_time;
 }
 
+void init_random_vector() {
+    // Setup initial values
+    for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
+        rand_vector[i] = i;
+    }
+    
+    for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
+        int index = random() % RAND_ALLOC_COUNT;
+
+        u32 temp = rand_vector[index];
+        rand_vector[index] = rand_vector[i];
+        rand_vector[i] = temp;
+    }
+}
+
 s32 main(s32 argc, char** argv) {
     // Setup
-    freelist_create(1024 * MB, false, &allocator);
+    freelist_create(RAND_ALLOC_COUNT * ALLOCATION_SIZE * 1600, false, &allocator);
+    init_random_vector();
 
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        rand_vector[i] = INVALID_ID;
-    }
-    for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        u32 value = random() % RAND_ALLOC_COUNT;
-        while (true) {
-            b8 found_valid = true;
-            for (u32 j = 0; j < RAND_ALLOC_COUNT; j++) {
-                if (rand_vector[j] == value) {
-                    value = random() % RAND_ALLOC_COUNT;
-                    found_valid = false;
-                    break;
-                }
-            }
-            
-            if (found_valid) {
-                break;
+        b8 found = false;
+        for (u32 j = 0; j < RAND_ALLOC_COUNT; j++) {
+            if (rand_vector[j] == i) {
+                found = true;
             }
         }
-
-        rand_vector[i] = value;
+        SASSERT(found, "Failed to correctly initialize random vector. Could not find value %d", i);
     }
 
 #define BENCHMARK_FUNCTION_COUNT 4
     u32 iteration_counts[BENCHMARK_FUNCTION_COUNT] = {
         1000000,
-        100,
+        10000,
         1000000,
-        100,
+        10000,
     };
 
     void (*benchmark_functoins[BENCHMARK_FUNCTION_COUNT])() = {
@@ -97,7 +100,7 @@ s32 main(s32 argc, char** argv) {
     }
 
     STRACE("Starting...");
-    const u32 test_count = 50;
+    const u32 test_count = 1;
     for (u32 i = 0; i < test_count; i++) {
         for (u32 f = 0; f < BENCHMARK_FUNCTION_COUNT; f++) {
             double time = run_benchmark(benchmark_functoins[f], iteration_counts[f], benchmark_function_names[f]);

@@ -2,7 +2,7 @@
 
 #include "Spark/core/smemory.h"
 
-#define GENERAL_ALLOCATOR_DEFAULT_SIZE     256 * MB
+#define GENERAL_ALLOCATOR_DEFAULT_SIZE     (1 * MB)
 
 typedef struct freelist_block {
     u32 size;

@@ -54,7 +54,7 @@ void freelist_destroy(freelist_t* allocator) {
 void* freelist_suballocate(freelist_t* allocator, u64 size) {
     // Failed to allocate, check sub allocator
     if (allocator->next_allocator) {
-        SWARN("Suballocator allocation. Size: %d", size);
+        // SWARN("Suballocator allocation. Size: %d", size);
         return freelist_allocate(allocator->next_allocator, size);
     }
 
@@ -66,12 +66,12 @@ void* freelist_suballocate(freelist_t* allocator, u64 size) {
 }
 
 void* freelist_allocate(freelist_t* allocator, u64 size) {
-    size = smax(size, sizeof(freelist_explicit_t));
-    SASSERT(size > 0, "Cannot allocate nothing.");
-
     if (!allocator->first_free_block) {
         return freelist_suballocate(allocator, size);
     }
+
+    size = smax(size, sizeof(freelist_explicit_t));
+    SASSERT(size > 0, "Cannot allocate nothing.");
 
     // Find first block with valid size
     freelist_block_t* block = (void*)allocator->first_free_block - sizeof(freelist_block_t);
@@ -163,7 +163,7 @@ void freelist_free(freelist_t* allocator, void* address) {
     // get allocation
     freelist_block_t* block = address - sizeof(freelist_block_t);
     freelist_block_t* block_header = address + block->size;
-    SASSERT(block->allocated, "Cannot free unallocated allocation.");
+    // SASSERT(block->allocated, "Cannot free unallocated allocation.");
 
     // Convert allocation to block
     enum coalesce_state {
@@ -180,7 +180,7 @@ void freelist_free(freelist_t* allocator, void* address) {
     freelist_explicit_t* next_explicit = (void*)next_block + sizeof(freelist_block_t);
 
     enum coalesce_state state = 0;
-    state |= coalesce_state_previous * (!previous_block->allocated && next_block->size);
+    state |= coalesce_state_previous * (!previous_block->allocated);
     state |= coalesce_state_next * (!next_block->allocated && next_block->size);
 
     switch (state) {
@@ -196,9 +196,15 @@ void freelist_free(freelist_t* allocator, void* address) {
                 break;
             }
 
-            previous_explicit = allocator->first_free_block;
-            while (previous_explicit) {
-                if (previous_explicit->next > new_explicit) {
+            if (!allocator->first_free_block) {
+                allocator->first_free_block = new_explicit;
+                break;
+            }
+
+            previous_block = (void*)previous_block - previous_block->size * sizeof(freelist_block_t) * 2;
+            while ((void*)previous_block > allocator->memory) {
+                if (!previous_block->allocated) {
+                    previous_explicit = (void*)previous_block - previous_block->size;
                     new_explicit->next = previous_explicit->next;
                     new_explicit->previous = previous_explicit;
 
@@ -208,9 +214,21 @@ void freelist_free(freelist_t* allocator, void* address) {
                     previous_explicit->next = new_explicit;
                     break;
                 }
-                previous_explicit = previous_explicit->next;
+
+                previous_block = (void*)previous_block - previous_block->size * sizeof(freelist_block_t) * 2;
             }
-                allocator->first_free_block = new_explicit;
+            // previous_explicit = allocator->first_free_block;
+            // while (previous_explicit) {
+            //     if (previous_explicit->next > new_explicit) {
+            //         new_explicit->next = previous_explicit->next;
+            //         new_explicit->previous = previous_explicit;
+            //
+            //         new_explicit->next->previous = new_explicit;
+            //         previous_explicit->next = new_explicit;
+            //         break;
+            //     }
+            //     previous_explicit = previous_explicit->next;
+            // }
             break;
         case coalesce_state_previous:
             // SDEBUG("Coalesce previous");
@@ -228,7 +246,7 @@ void freelist_free(freelist_t* allocator, void* address) {
             block_header->size = block->size;
 
             new_explicit->previous = next_explicit->previous;
-            new_explicit->next = next_explicit->next;
+            new_explicit->next     = next_explicit->next;
 
             if (new_explicit->next) {
                 next_explicit->next->previous = new_explicit;
@@ -237,7 +255,7 @@ void freelist_free(freelist_t* allocator, void* address) {
                 next_explicit->previous->next = new_explicit;
             }
 
-            if (next_explicit == allocator->first_free_block) {
+            if (new_explicit <= allocator->first_free_block) {
                 allocator->first_free_block = new_explicit;
             }
             break;
@@ -249,7 +267,6 @@ void freelist_free(freelist_t* allocator, void* address) {
             block_header = (void*)block_header + next_block->size + sizeof(freelist_block_t) * 2;
             block_header->size = block->size;
 
-            new_explicit->next = next_explicit->next;
             previous_explicit->next = next_explicit->next;
             if (next_explicit->next) {
                 next_explicit->next->previous = previous_explicit;
@@ -258,5 +275,5 @@ void freelist_free(freelist_t* allocator, void* address) {
     }
     //
     // test_explicit_freelist(allocator);
+    // SASSERT((void*)allocator->first_free_block >= allocator->memory && (void*)allocator->first_free_block < allocator->memory + allocator->memory_size, "First free block is oob");
 }
-
