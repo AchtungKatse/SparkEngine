@@ -3,7 +3,7 @@
 
 void freelist_test() {
     freelist_t allocator;
-    const u32 memory_size = 10 * KB;
+    const u32 memory_size = 16 * KB;
     freelist_create(memory_size, false, &allocator);
     freelist_block_t block = *allocator.first_block;
 
@@ -85,7 +85,7 @@ void freelist_test() {
             rand_ints[i] = freelist_allocate(&allocator, sizeof(int), MEMORY_TAG_ARRAY);
         }
 
-        for (u32 i = 0; i < 1000; i++) {
+        for (u32 i = 0; i < 10000; i++) {
             u32 index = random() % int_count;
             if (rand_ints[index]) {
                 freelist_free(&allocator, rand_ints[index]);
@@ -102,7 +102,7 @@ void freelist_test() {
 
     // Overflow test
     {
-        const u32 max_int_count = memory_size / (sizeof(int) + sizeof(freelist_block_t) * 2) + 2;
+        const u32 max_int_count = memory_size / (0x10 + sizeof(freelist_block_t) * 2) + 2;
         int* ints[max_int_count];
 
         for (u32 i = 0; i < max_int_count; i++) {

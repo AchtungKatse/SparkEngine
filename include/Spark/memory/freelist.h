@@ -9,10 +9,11 @@ typedef struct freelist_block {
     b32 allocated;
 } freelist_block_t;
 
+struct freelist_explicit;
 
 typedef struct freelist {
     struct freelist_block* first_block;
-    struct freelist_block* first_free_block;
+    struct freelist_explicit* first_free_block;
     struct freelist* next_allocator;
     void* memory;
     u64 memory_size;
