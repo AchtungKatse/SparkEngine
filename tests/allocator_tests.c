@@ -11,7 +11,7 @@ void freelist_test() {
     const u32 int_count = 64;
     // Simple allocation and free test
     {
-        int* ints = freelist_allocate(&allocator, sizeof(int) * int_count, MEMORY_TAG_ARRAY);
+        int* ints = freelist_allocate(&allocator, sizeof(int) * int_count);
 
         for (u32 i = 0; i < int_count; i++) {
             ints[i] = i;
@@ -38,7 +38,7 @@ void freelist_test() {
         const u32 int_count = 8;
         int* ints[int_count];
         for (u32 i = 0; i < int_count; i++) {
-            ints[i] = freelist_allocate(&allocator, sizeof(int) * int_count, MEMORY_TAG_ARRAY);
+            ints[i] = freelist_allocate(&allocator, sizeof(int) * int_count);
         }
 
         freelist_free(&allocator, ints[0]);
@@ -60,7 +60,7 @@ void freelist_test() {
     // Allocate something over the allocator size
     {
         const u32 max_int_count = memory_size / sizeof(int);
-        int* ints = freelist_allocate(&allocator, memory_size * 2, MEMORY_TAG_ARRAY);
+        int* ints = freelist_allocate(&allocator, memory_size * 2);
 
         for (u32 i = 0; i < max_int_count; i++) {
             ints[i] = i;
@@ -82,7 +82,7 @@ void freelist_test() {
     {
         int* rand_ints[int_count];
         for (u32 i = 0; i < int_count; i++) {
-            rand_ints[i] = freelist_allocate(&allocator, sizeof(int), MEMORY_TAG_ARRAY);
+            rand_ints[i] = freelist_allocate(&allocator, sizeof(int));
         }
 
         for (u32 i = 0; i < 10000; i++) {
@@ -106,7 +106,7 @@ void freelist_test() {
         int* ints[max_int_count];
 
         for (u32 i = 0; i < max_int_count; i++) {
-            ints[i] = freelist_allocate(&allocator, sizeof(int), MEMORY_TAG_ARRAY);
+            ints[i] = freelist_allocate(&allocator, sizeof(int));
         }
 
         for (u32 i = 0; i < max_int_count; i++) {

@@ -121,7 +121,7 @@ SINLINE void malloc_benchmark() {
 }
 
 SINLINE void freelist_benchmark() {
-    void* value = freelist_allocate(&allocator, ALLOCATION_SIZE, MEMORY_TAG_ARRAY);
+    void* value = freelist_allocate(&allocator, ALLOCATION_SIZE);
     allocation_total += (u64)value;
     freelist_free(&allocator, value);
 }
@@ -139,7 +139,7 @@ SINLINE void malloc_randalloc_benchmark() {
 SINLINE void freelist_randalloc_benchmark() {
     u32* ints[RAND_ALLOC_COUNT];
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        ints[i] = freelist_allocate(&allocator, ALLOCATION_SIZE, MEMORY_TAG_ARRAY);
+        ints[i] = freelist_allocate(&allocator, ALLOCATION_SIZE);
     }
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
         freelist_free(&allocator, ints[rand_vector[i]]);

@@ -75,12 +75,12 @@ void initialize_memory() {
     state_ptr.alloc_count = 0;
 
     freelist_create(128 * MB, false, &state_ptr.allocator);
-    memory_usage_string = freelist_allocate(&state_ptr.allocator, memory_usage_string_size, false);
+    memory_usage_string = freelist_allocate(&state_ptr.allocator, memory_usage_string_size);
 
 #ifdef SPARK_DEBUG 
     allocation_count = 0;
     allocation_capacity = 8192;
-    tracked_allocations = freelist_allocate(&state_ptr.allocator, sizeof(allocation_info_t) * allocation_capacity, false);
+    tracked_allocations = freelist_allocate(&state_ptr.allocator, sizeof(allocation_info_t) * allocation_capacity);
 #endif
 }
 
@@ -127,7 +127,7 @@ pvt_sallocate(u64 size, memory_tag_t tag) {
     state_ptr.stats.total_allocated += size;
     state_ptr.stats.tagged_allocations[tag] += size;
 
-    void* block = freelist_allocate(&state_ptr.allocator, size, false);
+    void* block = freelist_allocate(&state_ptr.allocator, size);
     platform_zero_memory(block, size);
     return block;
 }
@@ -262,7 +262,7 @@ create_tracked_allocation(u64 size, memory_tag_t tag, const char* file, u32 line
         SERROR("backtrace_symbols failed to get symbols");
     }
 
-    char* backtrace_string = freelist_allocate(&state_ptr.allocator, 0x1000, false);
+    char* backtrace_string = freelist_allocate(&state_ptr.allocator, 0x1000);
     szero_memory(backtrace_string, 0x1000);
     for (u32 i = 1, offset = 0; i < backtrace_pointer_count; i++) {
 

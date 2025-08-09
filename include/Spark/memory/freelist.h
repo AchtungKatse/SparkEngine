@@ -23,5 +23,5 @@ typedef struct freelist {
 void freelist_create(u64 size, b8 alligned, freelist_t* out_allocator);
 void freelist_destroy(freelist_t* allocator);
 
-void* freelist_allocate(freelist_t* allocator, u64 size, memory_tag_t tag);
+void* freelist_allocate(freelist_t* allocator, u64 size);
 void freelist_free(freelist_t* allocator, void* address);

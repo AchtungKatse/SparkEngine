@@ -14,6 +14,8 @@ typedef struct freelist_explicit {
     struct freelist_explicit* previous;
 } freelist_explicit_t;
 
+void* freelist_suballocate(freelist_t* allocator, u64 size);
+
 void freelist_create(u64 size, b8 aligned, freelist_t* out_allocator) {
     size = smax(size, 1024);
 
@@ -49,9 +51,27 @@ void freelist_destroy(freelist_t* allocator) {
     platform_free(allocator->memory, allocator->aligned);
 }
 
-void* freelist_allocate(freelist_t* allocator, u64 size, memory_tag_t tag) {
+void* freelist_suballocate(freelist_t* allocator, u64 size) {
+    // Failed to allocate, check sub allocator
+    if (allocator->next_allocator) {
+        SWARN("Suballocator allocation. Size: %d", size);
+        return freelist_allocate(allocator->next_allocator, size);
+    }
+
+    // Failed to allocate the data, Create a new sub-allocator
+    SWARN("Creating sub-allocator");
+    allocator->next_allocator = platform_allocate(sizeof(freelist_t), allocator->aligned);
+    freelist_create(smin(size * 4, GENERAL_ALLOCATOR_DEFAULT_SIZE), allocator->aligned, allocator->next_allocator);
+    return freelist_allocate(allocator->next_allocator, size);
+}
+
+void* freelist_allocate(freelist_t* allocator, u64 size) {
     size = smax(size, sizeof(freelist_explicit_t));
     SASSERT(size > 0, "Cannot allocate nothing.");
+
+    if (!allocator->first_free_block) {
+        return freelist_suballocate(allocator, size);
+    }
 
     // Find first block with valid size
     freelist_block_t* block = (void*)allocator->first_free_block - sizeof(freelist_block_t);
@@ -72,28 +92,32 @@ void* freelist_allocate(freelist_t* allocator, u64 size, memory_tag_t tag) {
         // It can
         // Split the block into the allocation and a new block
         const u32 remaining_size = block->size - size - sizeof(freelist_block_t);
-        freelist_block_t* new_block = ((void*)block) + sizeof(freelist_block_t) * 2 + size;
-        freelist_explicit_t* new_explicit = (void*)new_block + sizeof(freelist_block_t);
-        new_explicit->next     = 0;
-        new_explicit->previous = 0;
 
         if (sizeof(freelist_block_t) < remaining_size) {
+            freelist_block_t* new_block = ((void*)block) + sizeof(freelist_block_t) * 2 + size;
+            freelist_explicit_t* new_explicit = (void*)new_block + sizeof(freelist_block_t);
+            new_explicit->next     = 0;
+            new_explicit->previous = 0;
+
             new_block->size = remaining_size - sizeof(freelist_block_t);
+
+            if (explicit->next) {
+                explicit->next->previous = new_explicit;
+                new_explicit->next = explicit->next;
+            }
+            if (explicit->previous) {
+                explicit->previous->next = new_explicit;
+                new_explicit->previous = explicit->previous;
+            }
+            if (explicit == allocator->first_free_block) {
+                allocator->first_free_block = new_explicit;
+            }
+        } else {
+            size = remaining_size;
+            allocator->first_free_block = NULL;
         }
 
-        if (explicit->next) {
-            explicit->next->previous = new_explicit;
-            new_explicit->next = explicit->next;
-        }
-        if (explicit->previous) {
-            explicit->previous->next = new_explicit;
-            new_explicit->previous = explicit->previous;
-        }
 
-        if (explicit == allocator->first_free_block) {
-            allocator->first_free_block = new_explicit;
-        }
-        
 
         // Create a new allocation
         freelist_block_t* block_end = ((void*)block) + sizeof(freelist_block_t) + size;
@@ -106,17 +130,7 @@ void* freelist_allocate(freelist_t* allocator, u64 size, memory_tag_t tag) {
         return ((void*)block) + sizeof(freelist_block_t);
     }
 
-    // Failed to allocate, check sub allocator
-    if (allocator->next_allocator) {
-        SWARN("Suballocator allocation. Size: %d", size);
-        return freelist_allocate(allocator->next_allocator, size, tag);
-    }
-
-    // Failed to allocate the data, Create a new sub-allocator
-    SWARN("Creating sub-allocator");
-    allocator->next_allocator = platform_allocate(sizeof(freelist_t), allocator->aligned);
-    freelist_create(smin(size * 4, GENERAL_ALLOCATOR_DEFAULT_SIZE), allocator->aligned, allocator->next_allocator);
-    return freelist_allocate(allocator->next_allocator, size, tag);
+    return freelist_suballocate(allocator, size);
 }
 
 void test_explicit_freelist(freelist_t* allocator) {
@@ -175,7 +189,6 @@ void freelist_free(freelist_t* allocator, void* address) {
             block->allocated = false;
             block_header->allocated = false;
 
-            previous_explicit = allocator->first_free_block;
             if (new_explicit < allocator->first_free_block) {
                 new_explicit->next = allocator->first_free_block;
                 new_explicit->next->previous = new_explicit;
@@ -183,7 +196,8 @@ void freelist_free(freelist_t* allocator, void* address) {
                 break;
             }
 
-            while (true) {
+            previous_explicit = allocator->first_free_block;
+            while (previous_explicit) {
                 if (previous_explicit->next > new_explicit) {
                     new_explicit->next = previous_explicit->next;
                     new_explicit->previous = previous_explicit;
@@ -196,6 +210,7 @@ void freelist_free(freelist_t* allocator, void* address) {
                 }
                 previous_explicit = previous_explicit->next;
             }
+                allocator->first_free_block = new_explicit;
             break;
         case coalesce_state_previous:
             // SDEBUG("Coalesce previous");
