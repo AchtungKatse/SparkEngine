@@ -46,6 +46,8 @@ set(ASSIMP_BUILD_ZLIB ON)
 set(ASSIMP_BUILD_TESTS OFF)
 set(ASSIMP_INSTALL OFF)
 set(ASSIMP_INSTALL_PDB OFF)
+set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
+set(ASSIMP_BUILD_ALL_INPORTERS_BY_DEFAULT OFF)
 target_compile_options(resource_copy PRIVATE "-g" "-O2" "-flto=none")
 
 add_subdirectory(dependencies/assimp)
