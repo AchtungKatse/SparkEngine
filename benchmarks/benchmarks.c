@@ -5,6 +5,7 @@
 
 #include "Spark/containers/unordered_map.h"
 #include "Spark/math/smath.h"
+#include "Spark/memory/dynamic_allocator.h"
 #include "Spark/memory/freelist.h"
 #include "Spark/utils/hashing.h"
 #include <stdlib.h>
@@ -35,7 +36,7 @@ u32 rand_vector[RAND_ALLOC_COUNT];
 u32* rand_alloc_ints[RAND_ALLOC_COUNT];
 
 static u64 allocation_total = 0;
-static freelist_t allocator;
+static dynamic_allocator_t allocator;
 
 SINLINE void freelist_benchmark();
 SINLINE void freelist_randalloc_benchmark();
@@ -87,7 +88,7 @@ void init_random_vector() {
 
 s32 main(s32 argc, char** argv) {
     // Setup
-    freelist_create(512 * MB, false, &allocator);
+    dynamic_allocator_create(512 * MB, &allocator);
     init_random_vector();
 
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
@@ -167,9 +168,9 @@ SINLINE void malloc_benchmark() {
 }
 
 SINLINE void freelist_benchmark() {
-    void* value = freelist_allocate(&allocator, allocation_size);
+    void* value = dynamic_allocator_allocate(&allocator, allocation_size);
     allocation_total += (u64)value;
-    freelist_free(&allocator, value);
+    dynamic_allocator_free(&allocator, value);
 }
 
 SINLINE void malloc_randalloc_benchmark() {
@@ -183,9 +184,9 @@ SINLINE void malloc_randalloc_benchmark() {
 
 SINLINE void freelist_randalloc_benchmark() {
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        rand_alloc_ints[i] = freelist_allocate(&allocator, allocation_size);
+        rand_alloc_ints[i] = dynamic_allocator_allocate(&allocator, allocation_size);
     }
     for (u32 i = 0; i < RAND_ALLOC_COUNT; i++) {
-        freelist_free(&allocator, rand_alloc_ints[rand_vector[i]]);
+        dynamic_allocator_free(&allocator, rand_alloc_ints[rand_vector[i]]);
     }
 }

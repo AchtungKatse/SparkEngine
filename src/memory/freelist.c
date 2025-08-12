@@ -17,22 +17,19 @@ typedef struct freelist_explicit {
 // void* freelist_suballocate(freelist_t* allocator, u64 size);
 // void test_explicit_freelist(freelist_t* allocator);
 
-void freelist_create(u64 size, b8 aligned, freelist_t* out_allocator) {
-    size = smax(size, 1024);
+void freelist_create(void* memory, u64 memory_size, freelist_t* out_allocator) {
+    SASSERT(memory_size >= FREELIST_MINIMUM_MEMORY_SIZE, "Cannot create freelist with memory size less than %d", FREELIST_MINIMUM_MEMORY_SIZE);
+    out_allocator->memory = memory;
 
-    const u64 memory_size = size + sizeof(freelist_block_t) * 4;
-    // out_allocator->memory_size    = size + sizeof(freelist_block_t) * 4;
-    out_allocator->memory         = platform_allocate(memory_size, aligned);
-    out_allocator->aligned        = aligned;
-    // out_allocator->next_allocator = NULL;
+    u32 usable_size = memory_size - sizeof(freelist_block_t) * 4;
 
     // Create first block
     freelist_block_t* block = out_allocator->memory + sizeof(freelist_block_t);
-    block->size             = size;
+    block->size             = usable_size;
     block->allocated        = false;
 
-    freelist_block_t* block_end = out_allocator->memory + sizeof(freelist_block_t) + size;
-    block_end->size             = size;
+    freelist_block_t* block_end = out_allocator->memory + sizeof(freelist_block_t) + usable_size;
+    block_end->size             = usable_size;
     block_end->allocated        = false;
 
     freelist_explicit_t* explicit = (void*)block + sizeof(freelist_block_t);
@@ -48,39 +45,14 @@ void freelist_create(u64 size, b8 aligned, freelist_t* out_allocator) {
     freelist_block_t* trailing_block = out_allocator->memory + memory_size - sizeof(freelist_block_t);
     trailing_block->size = 0;
     trailing_block->allocated = true;
-    // SDEBUG("Last block addr: %p", size + sizeof(freelist_block_t));
-
-    // test_explicit_freelist(out_allocator);
 }
 
 void freelist_destroy(freelist_t* allocator) {
-    platform_free(allocator->memory, allocator->aligned);
+    platform_free(allocator->memory, true);
 }
 
-// void* freelist_suballocate(freelist_t* allocator, u64 size) {
-//     // Failed to allocate, check sub allocator
-//     // if (allocator->next_allocator) {
-//     //     // SWARN("Suballocator allocation. Size: %d", size);
-//     //     return freelist_allocate(allocator->next_allocator, size);
-//     // }
-//
-//     // Failed to allocate the data, Create a new sub-allocator
-//     // SWARN("Creating sub-allocator");
-//     allocator->next_allocator = platform_allocate(sizeof(freelist_t), allocator->aligned);
-//     freelist_create(smax(size * 4, GENERAL_ALLOCATOR_DEFAULT_SIZE), allocator->aligned, allocator->next_allocator);
-//     return freelist_allocate(allocator->next_allocator, size);
-// }
-
 void* freelist_allocate(freelist_t* allocator, u64 size) {
-    // SASSERT(allocator->first_free_block, "FREELIST RAN OUT OF MEMORY.");
-    // if (!allocator->first_free_block) {
-    //     return freelist_suballocate(allocator, size);
-    // }
-
     size = smax(size, 32);
-    // SASSERT(size > 0, "Cannot allocate nothing.");
-
-    // Find first block with valid size
 
     freelist_explicit_t* explicit = allocator->first_free_block;
     while (explicit) {
