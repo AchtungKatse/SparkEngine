@@ -1,8 +1,12 @@
 #include "Spark/math/smath.h"
+#include "Spark/random/noise/simplex.h"
+#include <immintrin.h>
 
 // Constant Numbers
 #define F2 (0.5 * (S_SQRT_THREE - 1.0))
+#define F3 (1.0 / 3.0)
 #define G2 ((3.0 - S_SQRT_THREE) / 6.0)
+#define G3 (1.0 / 6.0)
 #define INT_ONE 65535
 
 // Private functions
@@ -11,19 +15,24 @@ s32 fast_floor(const f32 x) {
     return x > 0 ? (int)x : (int)x - 1;
 }
 
-s32 fast_floor_int(const s32 x) {
-    return (x >> 16) << 16;
-}
+#define fast_floor_int(x) ((x >> 16) << 16)
+// s32 fast_floor_int(const s32 x) {
+//     return (x >> 16) << 16;
+// }
 
-f32 dot_2d(const s32 vector[2], const vec2 pos) {
+f32 dot_2d(const s8 vector[2], const vec2 pos) {
     return pos.x * vector[0] + pos.y * vector[1];
 }
 
+f32 dot_3d(const s8 vector[3], const vec3 pos) {
+    return pos.x * vector[0] + pos.y * vector[1] + pos.z * vector[2];
+}
+
 // Private data
-const static s32 grad2[12][2];
-// const static s32 grad3[12][3];
+const static s8 grad2[12][2];
+const static s8 grad3[12][3];
 // const static s32 grad4[32][4];
-const static int perm[512];
+const static u8 perm[512];
 
 float simplex_2d(vec2 pos) {
     // Skew to square grid
@@ -154,18 +163,181 @@ u32 simplex_2d_int(vec2i pos) {
     return noise;
 }
 
-const static s32 grad2[12][2] = {
+/**
+ * @brief Simplex noise using integers instead of floats. 65535 maps to 1.0
+ *
+ * @param pos Position in integer space
+ * @return Simplex noise value
+ */
+void simplex_2d_int_simd(vec2i pos, vec2i size, s32* out_noise) {
+#pragma omp simd
+    for (u32 _x = 0, i = 0; _x < size.x; _x++) {
+        for (u32 _y = 0; _y < size.y; _y++, i++) {
+            // Skew to square grid
+            const s32 s = (pos.x + pos.y) * F2 * INT_ONE;
+            const s32 i = fast_floor_int(pos.x + s) >> 16;
+            const s32 j = fast_floor_int(pos.y + s) >> 16;
+
+            // Unskew cell to x,y space
+            const s32 t  = (i + j) * G2 * INT_ONE;
+            const s32 x0 = (i - t) >> 16;
+            const s32 y0 = (j - t) >> 16;
+
+            const s32 x_dst = pos.x - x0;
+            const s32 y_dst = pos.y - y0;
+
+            // Find the simplex coordinate
+            s32 i1 = 0;
+            s32 j1 = 1;
+            if (x_dst > y_dst) {
+                i1 = 1; 
+                j1 = 0;
+            }
+
+            // A step of (1,0) in (i,j) means a step of (1-c,-c) in (x,y), and
+            // a step of (0,1) in (i,j) means a step of (-c,1-c) in (x,y), where
+            // c = (3-sqrt(3))/6
+            const s32 x1 = x0 - i1 + G2;
+            const s32 y1 = y0 - j1 + G2;
+            const s32 x2 = x0 - INT_ONE + INT_ONE * 2 * G2;
+            const s32 y2 = y0 - INT_ONE + INT_ONE * 2 * G2;
+
+            // Calculate gradient indices of simplex corners
+            const s32 ii = i & 255;
+            const s32 jj = j & 255;
+            const s32 gi0 = perm[ii +      perm[jj     ]] % 12;
+            const s32 gi1 = perm[ii + i1 + perm[jj + j1]] % 12;
+            const s32 gi2 = perm[ii + 1 +  perm[jj + 1 ]] % 12;
+
+            // Noise distributions
+            s32 noise = 70 * INT_ONE;
+
+            // Calculate the contribution from the three corners
+            s32 t0 = INT_ONE / 2 - x0 * x0 - y0 * y0;
+            if (t0 >= 0) {
+                t0 *= t0;
+                noise += t0 * t0 * dot_2d(grad2[gi0], (vec2) { .x = x0, .y = y0 }); // (x,y) of grad3 used for 2D gradient
+            }
+
+            s32 t1 = INT_ONE / 2 - x1 * x1 - y1 * y1;
+            if (t1 >= 0) {
+                t1 *= t1;
+                noise += t1 * t1 * dot_2d(grad2[gi1], (vec2) { .x = x1, .y = y1 }); // (x,y) of grad3 used for 2D gradient
+            }
+
+            s32 t2 = INT_ONE / 2 - x2 * x2 - y2 * y2;
+            if (t2 >= 0) {
+                t2 *= t2;
+                noise += t2 * t2 * dot_2d(grad2[gi2], (vec2) { .x = x2, .y = y2 }); // (x,y) of grad3 used for 2D gradient
+            }
+
+            out_noise[i] = noise;
+        }
+    }
+}
+
+// 3D simplex noise
+f32 simplex_3d(vec3 pos) {
+    f32 n0, n1, n2, n3; // Noise contributions from the four corners
+                           // Skew the input space to determine which simplex cell we're in
+    f32 s = (pos.x + pos.y + pos.z) * F3; // Very nice and simple skew factor for 3D
+                                             
+    int i = fast_floor(pos.x + s);
+    int j = fast_floor(pos.x + s);
+    int k = fast_floor(pos.z + s);
+    f32 t = (i + j + k) * G3;
+
+
+    f32 X0 = i - t; // Unskew the cell origin back to (x,y,z) space
+    f32 Y0 = j - t;
+    f32 Z0 = k - t;
+
+    f32 x0 = pos.x - X0; // The x,y,z distances from the cell origin
+    f32 y0 = pos.y - Y0;
+    f32 z0 = pos.z - Z0;
+
+    // For the 3D case, the simplex shape is a slightly irregular tetrahedron.
+    // Determine which simplex we are in.
+    int i1, j1, k1 = 0; // Offsets for second corner of simplex in (i,j,k) coords
+    int i2, j2, k2 = 0; // Offsets for third corner of simplex in (i,j,k) coords
+    // TODO: Lookup table
+    if(x0>=y0) {
+        if(y0>=z0)
+        { i1=1; j1=0; k1=0; i2=1; j2=1; k2=0; } // X Y Z order
+        else if(x0>=z0) { i1=1; j1=0; k1=0; i2=1; j2=0; k2=1; } // X Z Y order
+        else { i1=0; j1=0; k1=1; i2=1; j2=0; k2=1; } // Z X Y order
+    }
+    else { // x0<y0
+        if(y0<z0) { i1=0; j1=0; k1=1; i2=0; j2=1; k2=1; } // Z Y X order
+        else if(x0<z0) { i1=0; j1=1; k1=0; i2=0; j2=1; k2=1; } // Y Z X order
+        else { i1=0; j1=1; k1=0; i2=1; j2=1; k2=0; } // Y X Z order
+    }
+
+    // A step of (1,0,0) in (i,j,k) means a step of (1-c,-c,-c) in (x,y,z),
+    // a step of (0,1,0) in (i,j,k) means a step of (-c,1-c,-c) in (x,y,z), and
+    // a step of (0,0,1) in (i,j,k) means a step of (-c,-c,1-c) in (x,y,z), where
+    // c = 1/6.
+    f32 x1 = x0 - i1 + G3; // Offsets for second corner in (x,y,z) coords
+    f32 y1 = y0 - j1 + G3;
+    f32 z1 = z0 - k1 + G3;
+    f32 x2 = x0 - i2  + 2.0 * G3; // Offsets for third corner in (x,y,z) coords
+    f32 y2 = y0 - j2  + 2.0 * G3;
+    f32 z2 = z0 - k2  + 2.0 * G3;
+    f32 x3 = x0 - 1.0 + 3.0 * G3; // Offsets for last corner in (x,y,z) coords
+    f32 y3 = y0 - 1.0 + 3.0 * G3;
+    f32 z3 = z0 - 1.0 + 3.0 * G3;
+
+    // Work out the hashed gradient indices of the four simplex corners
+    int ii = i & 255;
+    int jj = j & 255;
+    int kk = k & 255;
+    int gi0 = perm[ii +      perm[jj +      perm[kk     ]]] % 12;
+    int gi1 = perm[ii + i1 + perm[jj + j1 + perm[kk + k1]]] % 12;
+    int gi2 = perm[ii + i2 + perm[jj + j2 + perm[kk + k2]]] % 12;
+    int gi3 = perm[ii + 1  + perm[jj + 1  + perm[kk + 1 ]]] % 12;
+
+    // Calculate the contribution from the four corners
+    f32 t0 = 0.6 - x0*x0 - y0*y0 - z0*z0;
+    if(t0<0) n0 = 0.0;
+    else {
+        t0 *= t0;
+        n0 = t0 * t0 * dot_3d(grad3[gi0], (vec3) {.x = x0, y0, z0} );
+    }
+    f32 t1 = 0.6 - x1*x1 - y1*y1 - z1*z1;
+    if(t1<0) n1 = 0.0;
+    else {
+        t1 *= t1;
+        n1 = t1 * t1 * dot_3d(grad3[gi1], (vec3) { x1, y1, z1 } );
+    }
+    f32 t2 = 0.6 - x2*x2 - y2*y2 - z2*z2;
+    if(t2<0) n2 = 0.0;
+    else {
+        t2 *= t2;
+        n2 = t2 * t2 * dot_3d(grad3[gi2], (vec3) { x2, y2, z2 } );
+    }
+    f32 t3 = 0.6 - x3*x3 - y3*y3 - z3*z3;
+    if(t3<0) n3 = 0.0;
+    else {
+        t3 *= t3;
+        n3 = t3 * t3 * dot_3d(grad3[gi3], (vec3) { x3, y3, z3 } );
+    }
+    // Add contributions from each corner to get the final noise value.
+    // The result is scaled to stay just inside [-1,1]
+    return 32.0*(n0 + n1 + n2 + n3);
+}
+
+const static s8 grad2[12][2] = {
     {1,1},{-1,1},{1,-1},{-1,-1},
     {1,0},{-1,0},{1,0},{-1,0},
     {0,1},{0,-1},{0,1},{0,-1}
 };
 
-// const static s32 grad3[12][3] = {
-//     {1,1,0},{-1,1,0},{1,-1,0},{-1,-1,0},
-//     {1,0,1},{-1,0,1},{1,0,-1},{-1,0,-1},
-//     {0,1,1},{0,-1,1},{0,1,-1},{0,-1,-1}
-// };
-//
+const static s8 grad3[12][3] = {
+    {1,1,0},{-1,1,0},{1,-1,0},{-1,-1,0},
+    {1,0,1},{-1,0,1},{1,0,-1},{-1,0,-1},
+    {0,1,1},{0,-1,1},{0,1,-1},{0,-1,-1}
+};
+
 // const static s32 grad4[32][4]= {{0,1,1,1}, {0,1,1,-1}, {0,1,-1,1}, {0,1,-1,-1},
 //     {0,-1,1,1}, {0,-1,1,-1}, {0,-1,-1,1}, {0,-1,-1,-1},
 //     {1,0,1,1}, {1,0,1,-1}, {1,0,-1,1}, {1,0,-1,-1},
@@ -175,7 +347,7 @@ const static s32 grad2[12][2] = {
 //     {1,1,1,0}, {1,1,-1,0}, {1,-1,1,0}, {1,-1,-1,0},
 //     {-1,1,1,0}, {-1,1,-1,0}, {-1,-1,1,0}, {-1,-1,-1,0}
 // };
-const static int perm[512] = {
+const static u8 perm[512] = {
     151,160,137,91,90,15,
     131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
     190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
