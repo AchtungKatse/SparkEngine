@@ -3,6 +3,7 @@
 #include "Spark/defines.h"
 #include "Spark/core/logging.h"
 
+#include "Spark/entry.h"
 #include "Spark/math/smath.h"
 #include "Spark/memory/dynamic_allocator.h"
 #include <stdlib.h>
@@ -50,6 +51,10 @@ int sort_median_times(const void* a, const void* b) {
     } else { 
         return 0;
     }
+}
+
+b8 create_game(game_t *out_game) {
+    return true;
 }
 
 double run_benchmark(void (*benchmark_function)(), u32 iteration_count, const char* name) {

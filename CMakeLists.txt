@@ -2,13 +2,14 @@
 # Project Definition and options
 # ==============================================
 cmake_minimum_required(VERSION 3.31 FATAL_ERROR)
-project(SparkEngine)
+project(SparkCore)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(SPARK_BUILD_TESTS OFF)
 option(SPARK_LINK_STATIC OFF)
 option(SPARK_DEBUG OFF)
 option(SPARK_NO_ERROR_CHECKING OFF)
+option(SPARK_CORE_ONLY OFF)
 
 message("===========================")
 message("           SPARK           ")
@@ -16,8 +17,7 @@ message("===========================")
 
 # Add source files
 file(GLOB_RECURSE SOURCE_FILES 
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/*.c
 )
 
 # Compiler flags
@@ -30,15 +30,61 @@ set(CMAKE_CXX_FLAGS ${CMAKE_C_FLAGS})
 
 # Define the link libraries
 if (SPARK_LINK_STATIC)
-    add_library(SparkEngine STATIC ${SOURCE_FILES})
+    add_library(SparkCore STATIC ${SOURCE_FILES})
     message("Linking to spark statically")
 else()
-    add_library(SparkEngine SHARED ${SOURCE_FILES})
+    add_library(SparkCore SHARED ${SOURCE_FILES})
     message("Linking to spark dynamically: " ${SPARK_LINK_STATIC} " : " ${SPARK_DEBUG})
 endif()
 
 
 # Dependencies
+set(OBJECT_LAYER_BITS 32)
+add_subdirectory(dependencies/joltc)
+target_compile_options(joltc PRIVATE "-w")
+
+# Define the include DIRs
+target_include_directories(SparkCore PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/api/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glfw/include/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glad/include/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/stb"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/joltc/include"
+)
+
+# target_compile_options(SparkCore PRIVATE -Werror)
+target_precompile_headers(SparkCore PRIVATE 
+    "$<$<COMPILE_LANGUAGE:C>:${CMAKE_CURRENT_SOURCE_DIR}/include/Spark/PCH.h>"
+)
+
+if (SPARK_NO_ERROR_CHECKING) 
+    message("Spark not compiling with error checking (Asserts / SERROR)")
+    target_compile_definitions(SparkCore PUBLIC "SPARK_NO_ERROR_CHECKING")
+endif()
+if (SPARK_DEBUG) 
+    message("adding spark_debug preprocessing: " ${SPARK_DEBUG})
+    target_compile_definitions(SparkCore PUBLIC "SPARK_DEBUG")
+endif()
+
+# NOTE: m is the c math library
+target_link_libraries(SparkCore PRIVATE vulkan m joltc)
+
+# Platform specific includes
+IF (WIN32)
+ELSE()
+    target_link_libraries(SparkCore PRIVATE xcb X11 X11-xcb)
+ENDIF()
+
+# Tests
+if (SPARK_BUILD_TESTS) 
+    add_subdirectory(tests)
+    target_include_directories(spark_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_link_libraries(spark_tests PRIVATE SparkCore)
+endif()
+
+# Create Engine
+IF (NOT SPARK_CORE_ONLY)
 add_subdirectory(tools/resource_copy)
 target_include_directories(resource_copy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(ASSIMP_NO_EXPORT OFF)
@@ -52,54 +98,12 @@ target_compile_options(resource_copy PRIVATE "-g" "-O2" "-flto=none")
 
 add_subdirectory(dependencies/assimp)
 target_link_libraries(resource_copy PRIVATE assimp)
-
-set(OBJECT_LAYER_BITS 32)
-add_subdirectory(dependencies/joltc)
-target_compile_options(joltc PRIVATE "-w")
-
-# Define the include DIRs
-target_include_directories(SparkEngine PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/"
-    "${CMAKE_CURRENT_SOURCE_DIR}/api/"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glfw/include/"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/glad/include/"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/stb"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/joltc/include"
+file(GLOB_RECURSE ENGINE_SOURCE_FILES 
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/engine/*.c
 )
+add_library(SparkEngine STATIC ${ENGINE_SOURCE_FILES})
+target_link_libraries(SparkEngine PUBLIC SparkCore)
 
-# target_compile_options(SparkEngine PRIVATE -Werror)
-target_precompile_headers(SparkEngine PRIVATE 
-    "$<$<COMPILE_LANGUAGE:C>:${CMAKE_CURRENT_SOURCE_DIR}/include/Spark/PCH.h>"
-)
-
-if (SPARK_NO_ERROR_CHECKING) 
-    message("Spark not compiling with error checking (Asserts / SERROR)")
-    target_compile_definitions(SparkEngine PUBLIC "SPARK_NO_ERROR_CHECKING")
-endif()
-if (SPARK_DEBUG) 
-    message("adding spark_debug preprocessing: " ${SPARK_DEBUG})
-    target_compile_definitions(SparkEngine PUBLIC "SPARK_DEBUG")
-endif()
-
-# NOTE: m is the c math library
-target_link_libraries(SparkEngine PRIVATE vulkan m joltc)
-
-# Tests
-if (SPARK_BUILD_TESTS) 
-    add_subdirectory(tests)
-    target_include_directories(spark_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-    target_link_libraries(spark_tests PRIVATE SparkEngine)
-
-    add_subdirectory(benchmarks)
-    target_include_directories(spark_benchmarks PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-    target_link_libraries(spark_benchmarks PRIVATE SparkEngine)
-endif()
-
-# Platform specific includes
-IF (WIN32)
-ELSE()
-    target_link_libraries(SparkEngine PRIVATE xcb X11 X11-xcb)
-ENDIF()
 
 # Resources 
 set(SPARK_RESOURCE_DIRS ${SPARK_RESOURCE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/assets/)
@@ -152,3 +156,4 @@ foreach (dir IN ITEMS ${SPARK_RESOURCE_DIRS})
         )
     endforeach()
 endforeach()
+endif()

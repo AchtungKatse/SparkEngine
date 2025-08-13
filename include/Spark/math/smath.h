@@ -36,6 +36,7 @@ SAPI s32 absi(s32 x);
 #define smin(x, y) (x < y ? x : y)
 #define smax(x, y) (x > y ? x : y)
 
+
 // Utility functions
 SINLINE b8 is_power_of_2(u64 value) {
     return (value != 0) && ((value & (value - 1)) == 0);
