@@ -88,10 +88,8 @@ void parent_entity(ecs_world_t* world, mat4 parent_matrix, entity_t child, b8 fo
         return;
     }
 
-    entity_t next_child = children->child;
-    while (next_child != INVALID_ID) {
-        parent_entity(world, world_matrix, children->child, force_dirty);
-        next_child = children->next_sibling;
+    for (u32 i = 0; i < children->children.count; i++) {
+        parent_entity(world, world_matrix, children->children.data[i], force_dirty);
     }
 }
 
@@ -103,9 +101,9 @@ void create_world_to_local_matrix(ecs_iterator_t* iterator) {
     dirty_transform_t* dirty = ECS_ITERATOR_GET_COMPONENTS(iterator, 4);
 
     for (u32 i = 0; i < iterator->entity_count; i++) {
-        if (!dirty[i].dirty) {
-            continue;
-        }
+        // if (!dirty[i].dirty) {
+        //     continue;
+        // }
 
         SASSERT(!ecs_component_set_contains(&iterator->archetype->component_set, ECS_COMPONENT_ID(entity_parent_t)), "local to world system cannot run on child objects.");
         mat4 translation = mat4_translation(translations[i].value);
@@ -130,11 +128,9 @@ void create_world_to_local_matrix(ecs_iterator_t* iterator) {
     // Check for children
     entity_child_t* children = iterator->archetype->columns.data[child_index].data;
     for (u32 i = 0; i < iterator->entity_count; i++) {
-        entity_child_t* child = &children[i];
-        entity_t next_child = child->child;
-        while (next_child != INVALID_ID) {
-            parent_entity(iterator->world, locals[i].value, child->child, false);
-            next_child = child->next_sibling;
+        entity_child_t* child_array = &children[i];
+        for (u32 j = 0; j < child_array->children.count; j++) {
+            parent_entity(iterator->world, locals[i].value, child_array->children.data[j], false);
         }
     }
 }

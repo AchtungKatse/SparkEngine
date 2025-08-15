@@ -19,4 +19,8 @@ void ecs_world_progress();
 
 ecs_component_id ecs_world_component_define(ecs_world_t* world, const char* name, u32 stride);
 
+#ifdef SPARK_DEBUG
 #define ECS_COMPONENT_DEFINE(world, component) ECS_COMPONENT_ID(component) = ecs_world_component_define(world, "ECSComponent_" #component "_ID", sizeof(component))
+#else
+#define ECS_COMPONENT_DEFINE(world, component) ECS_COMPONENT_ID(component) = ecs_world_component_define(world, "", sizeof(component))
+#endif

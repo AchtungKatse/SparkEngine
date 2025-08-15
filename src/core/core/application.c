@@ -162,7 +162,6 @@ application_create(game_t* game_inst) {
 
 b8 
 application_run() {
-    return true;
     app_state->status |= APPLICATION_STATE_RUNNING;
     clock_start(&app_state->clock);
     clock_update(&app_state->clock);

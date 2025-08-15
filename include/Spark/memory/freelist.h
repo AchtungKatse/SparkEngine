@@ -15,6 +15,9 @@ struct freelist_explicit;
 typedef struct freelist {
     void* memory;
     struct freelist_explicit* first_free_block;
+// #if SPARK_DEBUG
+//     struct freelist_block* first_block;
+// #endif
 } freelist_t;
 
 void freelist_create(void* memory, u64 memory_size, freelist_t* out_allocator);

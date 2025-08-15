@@ -6,5 +6,5 @@ void freelist_test();
 
 s32 main(s32 argc, char** argv) {
     freelist_test();
-    // hashmap_test();
+    hashmap_test();
 }

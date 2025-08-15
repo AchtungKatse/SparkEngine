@@ -9,7 +9,9 @@
 #define F3 (1.0 / 3.0)
 #define G2 ((3.0 - S_SQRT_THREE) / 6.0)
 #define G3 (1.0 / 6.0)
-#define INT_ONE 65535
+#define INT_ONE_BIT_COUNT 12
+#define INT_ONE ((1 << INT_ONE_BIT_COUNT))
+const u32 a = ((INT_ONE * INT_ONE) >> INT_ONE_BIT_COUNT);
 
 #define X_PRIME 501125321
 #define Y_PRIME 1136930381
@@ -23,17 +25,32 @@ s32 fast_floor(const f32 x) {
     return x > 0 ? (int)x : (int)x - 1;
 }
 
-#define fast_floor_int(x) (((x) >> 16) << 16)
+#define fast_floor_int(x) (x & ~(INT_ONE - 1))
 // s32 fast_floor_int(const s32 x) {
 //     return (x >> 16) << 16;
 // }
 
-f32 dot_2d(const s32 vector[2], const vec2 pos) {
+SINLINE s32 int_mul(s32 a, s32 b) {
+    s32 result = (a * b) >> INT_ONE_BIT_COUNT;
+    // Copy sign bit
+    const static u32 sign_bit = (1 << 31);
+    result |= (a ^ b) & sign_bit;
+    return result;
+}
+SINLINE s32 calculate_t(s32 x, s32 y);
+SINLINE s32 get_gradient_dot_fancy(s32 hash, s32 fX, s32 fY);
+SINLINE s32 hash_primes(u32 seed, u32 prime_count, s32* primes);
+SINLINE __m256i simd_masked_add(__m256i a, __m256i b, __m256i mask);
+SINLINE __m256i simd_get_gradient_dot_fancy(__m256i hash, __m256i fX, __m256i fY );
+SINLINE __m256i simd_hash_primes(u64 seed, u32 prime_count, __m256i* primes);
+SINLINE __m256i simd_calculate_t(__m256i x, __m256i y);
+
+f32 dot_2d(const f32 vector[2], const vec2 pos) {
     return pos.x * vector[0] + pos.y * vector[1];
 }
 
 SINLINE s32 dot_2d_int(const s32 vector[2], const vec2i pos) {
-    return ((pos.x * vector[0]) >> 16) + ((pos.y * vector[1]) >> 16);
+    return ((pos.x * vector[0]) >> INT_ONE_BIT_COUNT) + ((pos.y * vector[1]) >> INT_ONE_BIT_COUNT);
 }
 
 f32 dot_3d(const s8 vector[3], const vec3 pos) {
@@ -41,13 +58,13 @@ f32 dot_3d(const s8 vector[3], const vec3 pos) {
 }
 
 s32 dot_3d_int(const s8 vector[3], const vec3i pos) {
-    return ((pos.x * vector[0]) >> 16) + ((pos.y * vector[1]) >> 16) + ((pos.z * vector[2]) >> 16);
+    return ((pos.x * vector[0]) >> INT_ONE_BIT_COUNT) + ((pos.y * vector[1]) >> INT_ONE_BIT_COUNT) + ((pos.z * vector[2]) >> INT_ONE_BIT_COUNT);
 }
 
 // Private data
 const static s32 grad2_y[12];
 const static s32 grad2_x[12];
-const static s32 grad2[12][2];
+const static f32 grad2[12][2];
 const static s8 grad3[12][3];
 // const static s32 grad4[32][4];
 const static s32 perm[512];
@@ -119,124 +136,58 @@ float simplex_2d(vec2 pos) {
  * @param pos Position in integer space
  * @return Simplex noise value
  */
-u32 simplex_2d_int(vec2i pos) {
-    // Skew to square grid
-    const s32 s = (pos.x + pos.y) * F2 * INT_ONE;
-    const s32 i = fast_floor_int(pos.x + s) >> 16;
-    const s32 j = fast_floor_int(pos.y + s) >> 16;
+s32 simplex_2d_int(vec2i pos) {
+    const s32 f = ((pos.x + pos.y) * (s32)(F2 * INT_ONE)) >> INT_ONE_BIT_COUNT;
+    s32 x0 = fast_floor_int(pos.x + f) >> INT_ONE_BIT_COUNT;
+    s32 y0 = fast_floor_int(pos.y + f) >> INT_ONE_BIT_COUNT;
 
-    // Unskew cell to x,y space
-    const s32 t  = (i + j) * G2 * INT_ONE;
-    const s32 x0 = (i - t) >> 16;
-    const s32 y0 = (j - t) >> 16;
+    const s32 i = (x0 * X_PRIME);
+    const s32 j = (y0 * Y_PRIME);
 
-    const s32 x_dst = pos.x - x0;
-    const s32 y_dst = pos.y - y0;
+    const s32 g = ((s32)(INT_ONE * G2) * ((x0 + y0) * INT_ONE)) >> INT_ONE_BIT_COUNT;
+    x0 = pos.x - x0 - g;
+    y0 = pos.y - y0 - g;
 
-    // Find the simplex coordinate
-    s32 i1 = 0;
-    s32 j1 = 1;
-    if (x_dst > y_dst) {
-        i1 = 1; 
-        j1 = 0;
-    }
+        //     mask32v i1 = x0 > y0;
+        // //mask32v j1 = ~i1; //NMasked funcs
+        //
+        // float32v x1 = FS_MaskedSub_f32( x0, float32v( 1.f ), i1 ) + float32v( G2 );
+        // float32v y1 = FS_NMaskedSub_f32( y0, float32v( 1.f ), i1 ) + float32v( G2 );
+        // float32v x2 = x0 + float32v( (G2 * 2) - 1 );
+        // float32v y2 = y0 + float32v( (G2 * 2) - 1 );
+        //
+    const s32 i1 = x0 > y0;
+    s32 x1 = i1 ? x0 - INT_ONE : x0;
+    s32 y1 = i1 ? y0 - INT_ONE : y0;
+    x1 += (s32)(INT_ONE * G2);
+    y1 += (s32)(INT_ONE * G2);
 
-    // A step of (1,0) in (i,j) means a step of (1-c,-c) in (x,y), and
-    // a step of (0,1) in (i,j) means a step of (-c,1-c) in (x,y), where
-    // c = (3-sqrt(3))/6
-    const s32 x1 = x0 - i1 + G2;
-    const s32 y1 = y0 - j1 + G2;
-    const s32 x2 = x0 - INT_ONE + INT_ONE * 2 * G2;
-    const s32 y2 = y0 - INT_ONE + INT_ONE * 2 * G2;
 
-    // Calculate gradient indices of simplex corners
-    const s32 ii = i & 255;
-    const s32 jj = j & 255;
-    const s32 gi0 = perm[ii +      perm[jj     ]] % 12;
-    const s32 gi1 = perm[ii + i1 + perm[jj + j1]] % 12;
-    const s32 gi2 = perm[ii + 1 +  perm[jj + 1 ]] % 12;
+    s32 x2 = x0 + (s32)(INT_ONE * (G2 * 2 - 1));
+    s32 y2 = y0 + (s32)(INT_ONE * (G2 * 2 - 1));
 
-    // Noise distributions
-    s32 noise = 70 * INT_ONE;
+    const s32 t0 = calculate_t(x0, y0);
+    const s32 t1 = calculate_t(x1, y1);
+    const s32 t2 = calculate_t(x2, y2);
 
-    // Calculate the contribution from the three corners
-    s32 t0 = INT_ONE / 2 - x0 * x0 - y0 * y0;
-    if (t0 >= 0) {
-        t0 *= t0;
-        noise += t0 * t0 * dot_2d_int(grad2[gi0], (vec2i) { .x = x0, .y = y0 }); // (x,y) of grad3 used for 2D gradient
-    }
+    const s32 seed = 0;
+    const s32 n0 = get_gradient_dot_fancy(hash_primes(seed, 2, (s32[]) {i, j}), x0, y0);
+    const s32 n1 = get_gradient_dot_fancy(hash_primes(seed, 2, (s32[]) {
+                i1 ? i + X_PRIME : i,
+                i1 ? j + Y_PRIME : j,
+                }), x1, y1);
+    const s32 n2 = get_gradient_dot_fancy(hash_primes(seed, 2, (s32[]) {
+                i + X_PRIME,
+                j + Y_PRIME
+                }), x2, y2);
 
-    s32 t1 = INT_ONE / 2 - x1 * x1 - y1 * y1;
-    if (t1 >= 0) {
-        t1 *= t1;
-        noise += t1 * t1 * dot_2d_int(grad2[gi1], (vec2i) { .x = x1, .y = y1 }); // (x,y) of grad3 used for 2D gradient
-    }
-
-    s32 t2 = INT_ONE / 2 - x2 * x2 - y2 * y2;
-    if (t2 >= 0) {
-        t2 *= t2;
-        noise += t2 * t2 * dot_2d_int(grad2[gi2], (vec2i) { .x = x2, .y = y2 }); // (x,y) of grad3 used for 2D gradient
-    }
-
+    s32 noise = ((n0 * t0) >> 16) + ((n1 * t1) >> 16) + ((n2 * t2) >> 16);
+    // SDEBUG("X: %d, Y: %d", pos.x, pos.y);
+    // SDEBUG("\tI: %d, J: %d, i1: %d, T0: %d, T1: %d, T2: %d, N0: %d, N1: %d, N2: %d, Noise: %d (%f)", i, j, i1, t0, t1, t2, n0, n1, n2, noise, (float)noise / INT_ONE);
+    // SDEBUG("\tX0: %d, X1: %d, X2: %d", x0, x1, x2);
+    // SDEBUG("\tY0: %d, Y1: %d, Y2: %d", y0, y1, y2);
+    // SDEBUG("\tF: %d, G: %d", f, g);
     return noise;
-}
-
-SINLINE __m256i calculate_t(__m256i x, __m256i y) {
-    __m256i x_sqr = _mm256_mul_epi32(x, x);
-    __m256i y_sqr = _mm256_mul_epi32(y, y);
-    __m256i SIMD_HALF = _mm256_set1_epi32(INT_ONE / 2);
-    __m256i t = _mm256_sub_epi32(SIMD_HALF, _mm256_add_epi32(x_sqr, y_sqr));
-
-
-    const __m256i SIMD_ZERO = _mm256_set1_epi32(0);
-    __m256i mask = _mm256_cmpgt_epi32(t, SIMD_ZERO);
-    t = _mm256_blendv_epi8(SIMD_ZERO, t, mask);
-
-    t = _mm256_mul_epi32(t, t);
-    t = _mm256_mul_epi32(t, t);
-
-    return t;
-}
-
-SINLINE __m256i hash_primes(u64 seed, u32 prime_count, __m256i* primes) {
-    __m256i hash = _mm256_set1_epi64x(seed);
-    for (u32 i = 0; i < prime_count; i++) {
-    hash = _mm256_xor_si256(hash, primes[i]);
-    }
-
-    const __m256i mul = _mm256_set1_epi32(0x27d4eb2d);
-    hash = _mm256_mul_epi32(hash, mul);
-    hash = _mm256_srli_epi32(hash, 15);
-    hash = _mm256_xor_si256(hash, hash);
-    return hash;
-}
-
-SINLINE __m256i get_gradient_dot_fancy(__m256i hash, __m256i fX, __m256i fY ) {
-    __m256i index = _mm256_mul_epi32(_mm256_and_si256(hash, _mm256_set1_epi32(0x3FFFFF)), _mm256_set1_epi32( INT_ONE / 1.3333333333333333f));
-
-    // Bit-4 = Choose X Y ordering
-    __m256i xy = _mm256_slli_si256(index, 29);
-    xy = _mm256_srli_si256(xy, 31);
-
-    __m256i a = _mm256_blendv_epi8(fY, fX, xy);
-    __m256i b = _mm256_blendv_epi8(fX, fY, xy);
-
-    // Bit-1 = b flip sign
-    b = _mm256_xor_si256(b, _mm256_slli_si256(index, 31));
-
-    // Bit-2 = Mul a by 2 or Root3
-    __m256i aMul2 = _mm256_srli_si256(_mm256_slli_si256(index, 30), 31);
-
-    a = _mm256_mul_epi32(a, _mm256_blendv_epi8( aMul2, _mm256_set1_epi32(2), _mm256_set1_epi32(S_SQRT_THREE * INT_ONE)));
-    // b zero value if a mul 2
-    b = _mm256_and_si256(b, aMul2);
-
-    // Bit-8 = Flip sign of a + b
-    return _mm256_xor_si256(_mm256_add_epi32(a, b), _mm256_slli_epi32(_mm256_srli_epi32(index, 3), 31));
-}
-
-SINLINE __m256i masked_add(__m256i a, __m256i b, __m256i mask) {
-    return _mm256_add_epi32(a, _mm256_and_si256(b, mask));
 }
 
 /**
@@ -258,17 +209,17 @@ void simplex_2d_int_simd(vec2i pos, vec2i size, s32* out_noise) {
 
             // Skew to square grid
             // const s32 s = (pos.x + pos.y) * F2 * INT_ONE;
-            // const s32 i = fast_floor_int(pos.x + s) >> 16;
-            // const s32 j = fast_floor_int(pos.y + s) >> 16;
+            // const s32 i = fast_floor_int(pos.x + s) >> INT_ONE_BIT_COUNT;
+            // const s32 j = fast_floor_int(pos.y + s) >> INT_ONE_BIT_COUNT;
             __m256i f = _mm256_set1_epi32(F2 * INT_ONE);
             f = _mm256_mul_epi32(f, pos_sum);
 
             __m256i x0 = _mm256_add_epi32(x, f);
-            x0 = _mm256_slli_epi32(x0, 16);
-            x0 = _mm256_srli_epi32(x0, 16);
+            x0 = _mm256_slli_epi32(x0, INT_ONE_BIT_COUNT);
+            x0 = _mm256_srli_epi32(x0, INT_ONE_BIT_COUNT);
             __m256i y0 = _mm256_add_epi32(y, f);
-            y0 = _mm256_slli_epi32(y0, 16);
-            y0 = _mm256_srli_epi32(y0, 16);
+            y0 = _mm256_slli_epi32(y0, INT_ONE_BIT_COUNT);
+            y0 = _mm256_srli_epi32(y0, INT_ONE_BIT_COUNT);
 
             __m256i x_prime = _mm256_set1_epi32(X_PRIME);
             __m256i y_prime = _mm256_set1_epi32(Y_PRIME);
@@ -294,16 +245,16 @@ void simplex_2d_int_simd(vec2i pos, vec2i size, s32* out_noise) {
             __m256i x2 = _mm256_add_epi32(x0, SIMD_TWO_G2_PLUS_ONE);
             __m256i y2 = _mm256_add_epi32(y0, SIMD_TWO_G2_PLUS_ONE);
 
-            __m256i t0 = calculate_t(x0, y0);
-            __m256i t1 = calculate_t(x1, y1);
-            __m256i t2 = calculate_t(x2, y2);
+            __m256i t0 = simd_calculate_t(x0, y0);
+            __m256i t1 = simd_calculate_t(x1, y1);
+            __m256i t2 = simd_calculate_t(x2, y2);
 
             const u32 seed = 0;
-            __m256i n0 = get_gradient_dot_fancy(hash_primes(seed, 2, (__m256i[]) { i, j }), x0, y0);
-            __m256i n1 = get_gradient_dot_fancy(hash_primes(seed, 2, (__m256i[]) { 
-                        masked_add(i, _mm256_set1_epi32(X_PRIME), i1),
-                        masked_add(j,  _mm256_set1_epi32(Y_PRIME), i1) }), x1, y1);
-            __m256i n2 = get_gradient_dot_fancy(hash_primes(seed, 2, (__m256i[]) { 
+            __m256i n0 = simd_get_gradient_dot_fancy(simd_hash_primes(seed, 2, (__m256i[]) { i, j }), x0, y0);
+            __m256i n1 = simd_get_gradient_dot_fancy(simd_hash_primes(seed, 2, (__m256i[]) { 
+                        simd_masked_add(i, _mm256_set1_epi32(X_PRIME), i1),
+                        simd_masked_add(j,  _mm256_set1_epi32(Y_PRIME), i1) }), x1, y1);
+            __m256i n2 = simd_get_gradient_dot_fancy(simd_hash_primes(seed, 2, (__m256i[]) { 
                         _mm256_add_epi32(i, _mm256_set1_epi32(X_PRIME)),
                         _mm256_add_epi32(j, _mm256_set1_epi32(Y_PRIME)),
                         }), x2, y2);
@@ -312,8 +263,9 @@ void simplex_2d_int_simd(vec2i pos, vec2i size, s32* out_noise) {
             noise = _mm256_add_epi32(noise, _mm256_mul_epi32(n1, t1));
             noise = _mm256_add_epi32(noise, _mm256_mul_epi32(n2, t2));
             noise = _mm256_mul_epi32(noise, _mm256_set1_epi32(50 * INT_ONE));
+            noise = _mm256_set1_epi32(50 * INT_ONE);
 
-            _mm256_store_si256((void*)out_noise, noise);
+            _mm256_store_si256(((void*)out_noise + sizeof(__m256i) * index), noise);
         }
     }
 }
@@ -432,9 +384,9 @@ s32 simplex_3d_int(vec3i pos) {
     // Skew the input space to determine which simplex cell we're in
     const s32 s = (pos.x + pos.y + pos.z) * (F3 * INT_ONE); // Very nice and simple skew factor for 3D
 
-    const s32 i = fast_floor_int(pos.x + s) >> 16;
-    const s32 j = fast_floor_int(pos.y + s) >> 16;
-    const s32 k = fast_floor_int(pos.z + s) >> 16;
+    const s32 i = fast_floor_int(pos.x + s) >> INT_ONE_BIT_COUNT;
+    const s32 j = fast_floor_int(pos.y + s) >> INT_ONE_BIT_COUNT;
+    const s32 k = fast_floor_int(pos.z + s) >> INT_ONE_BIT_COUNT;
     const s32 t = (i + j + k) * G3;
 
 
@@ -536,6 +488,150 @@ s32 simplex_3d_int(vec3i pos) {
     return (32 * INT_ONE) *(n0 + n1 + n2 + n3);
 }
 
+// ====================
+// Helper functions
+// ====================
+SINLINE s32 calculate_t(s32 x, s32 y) {
+    x *= x;
+    y *= y;
+    x >>= INT_ONE_BIT_COUNT;
+    y >>= INT_ONE_BIT_COUNT;
+    s32 t = INT_ONE / 2 - (x + y);
+    if (t <= 0) {
+        return 0;
+    }
+
+    t = (t * t) >> INT_ONE_BIT_COUNT;
+    t = (t * t) >> INT_ONE_BIT_COUNT;
+    return t;
+}
+
+SINLINE __m256i simd_calculate_t(__m256i x, __m256i y) {
+    __m256i x_sqr = _mm256_mul_epi32(x, x);
+    __m256i y_sqr = _mm256_mul_epi32(y, y);
+    __m256i SIMD_HALF = _mm256_set1_epi32(INT_ONE / 2);
+    __m256i t = _mm256_sub_epi32(SIMD_HALF, _mm256_add_epi32(x_sqr, y_sqr));
+
+
+    const __m256i SIMD_ZERO = _mm256_set1_epi32(0);
+    __m256i mask = _mm256_cmpgt_epi32(t, SIMD_ZERO);
+    t = _mm256_blendv_epi8(SIMD_ZERO, t, mask);
+
+    t = _mm256_mul_epi32(t, t);
+    t = _mm256_mul_epi32(t, t);
+
+    return t;
+}
+
+SINLINE s32 hash_primes(u32 seed, u32 prime_count, s32* primes) {
+            //     int32v hash = seed;
+            // hash ^= (primedPos ^ ...);
+            //
+            // hash *= int32v( 0x27d4eb2d );
+            // return (hash >> 15) ^ hash;
+            //
+    s32 hash = seed;
+    for (u32 i = 0; i < prime_count; i++) {
+        hash ^= primes[i];
+    }
+
+    hash *= 0x27d4eb2d;
+    return (hash >> 15) ^ hash;
+}
+
+SINLINE __m256i simd_hash_primes(u64 seed, u32 prime_count, __m256i* primes) {
+    __m256i hash = _mm256_set1_epi64x(seed);
+    for (u32 i = 0; i < prime_count; i++) {
+        hash = _mm256_xor_si256(hash, primes[i]);
+    }
+
+    const __m256i mul = _mm256_set1_epi32(0x27d4eb2d);
+    hash = _mm256_mul_epi32(hash, mul);
+    hash = _mm256_srli_epi32(hash, 15);
+    hash = _mm256_xor_si256(hash, hash);
+    return hash;
+}
+
+SINLINE s32 get_gradient_dot_fancy(s32 hash, s32 fX, s32 fY ) {
+    const s32 mul = INT_ONE / 1.3333333333333333333333f;
+    s32 index = (hash & 0x3FFFFF) * mul;
+    index >>= INT_ONE_BIT_COUNT;
+    // s32 index = _mm256_mul_epi32(_mm256_and_si256(hash, _mm256_set1_epi32(0x3FFFFF)), _mm256_set1_epi32( INT_ONE / 1.3333333333333333f));
+
+    // Bit-4 = Choose X Y ordering
+    // s32 xy = (index >> 29) << 31;
+    s32 xy = (index & ( 1 << 2 )) != 0;
+
+    // __m256i xy = _mm256_slli_si256(index, 29);
+    // xy = _mm256_srli_si256(xy, 31);
+
+    s32 a = fX;
+    s32 b = fY;
+    if (xy) {
+        a = fY;
+        b = fX;
+    }
+    // __m256i a = _mm256_blendv_epi8(fY, fX, xy);
+    // __m256i b = _mm256_blendv_epi8(fX, fY, xy);
+
+    // Bit-1 = b flip sign
+    // b = b ^ (index << 31);
+    b *= -1;
+    // b = _mm256_xor_si256(b, _mm256_slli_si256(index, 31));
+
+    // Bit-2 = Mul a by 2 or Root3
+    s32 amul2 = ( index & ( 1 << 1 ) ) != 0;
+    // __m256i aMul2 = _mm256_srli_si256(_mm256_slli_si256(index, 30), 31);
+
+    // a = _mm256_mul_epi32(a, _mm256_blendv_epi8( aMul2, _mm256_set1_epi32(2), _mm256_set1_epi32(S_SQRT_THREE * INT_ONE)));
+    // b zero value if a mul 2
+    // b = _mm256_and_si256(b, aMul2);
+    if (amul2) {
+        a *= 2;
+    } else {
+        a *= (s32)(INT_ONE * S_SQRT_THREE);
+        a >>= INT_ONE_BIT_COUNT;
+    }
+    b = b * amul2;
+
+    // Bit-8 = Flip sign of a + b
+    return (a + b);
+}
+
+
+SINLINE __m256i simd_get_gradient_dot_fancy(__m256i hash, __m256i fX, __m256i fY ) {
+    __m256i index = _mm256_mul_epi32(_mm256_and_si256(hash, _mm256_set1_epi32(0x3FFFFF)), _mm256_set1_epi32( INT_ONE / 1.3333333333333333f));
+
+    // Bit-4 = Choose X Y ordering
+    __m256i xy = _mm256_slli_si256(index, 29);
+    xy = _mm256_srli_si256(xy, 31);
+
+    __m256i a = _mm256_blendv_epi8(fY, fX, xy);
+    __m256i b = _mm256_blendv_epi8(fX, fY, xy);
+
+    // Bit-1 = b flip sign
+    b = _mm256_xor_si256(b, _mm256_slli_si256(index, 31));
+
+    // Bit-2 = Mul a by 2 or Root3
+    __m256i aMul2 = _mm256_srli_si256(_mm256_slli_si256(index, 30), 31);
+
+    a = _mm256_mul_epi32(a, _mm256_blendv_epi8( aMul2, _mm256_set1_epi32(2), _mm256_set1_epi32(S_SQRT_THREE * INT_ONE)));
+    // b zero value if a mul 2
+    b = _mm256_and_si256(b, aMul2);
+
+    // Bit-8 = Flip sign of a + b
+    return _mm256_xor_si256(_mm256_add_epi32(a, b), _mm256_slli_epi32(_mm256_srli_epi32(index, 3), 31));
+}
+
+SINLINE __m256i simd_masked_add(__m256i a, __m256i b, __m256i mask) {
+    return _mm256_add_epi32(a, _mm256_and_si256(b, mask));
+}
+
+
+// ====================
+// Data
+// ====================
+
 const static s32 grad2_x[12] = {
     1,-1,1,-1,
     1,-1,1,-1,
@@ -546,7 +642,7 @@ const static s32 grad2_y[12] = {
     0,0,0,0,
     1,-1,1,-1
 };
-const static s32 grad2[12][2] = {
+const static f32 grad2[12][2] = {
     {1,1},{-1,1},{1,-1},{-1,-1},
     {1,0},{-1,0},{1,0},{-1,0},
     {0,1},{0,-1},{0,1},{0,-1}

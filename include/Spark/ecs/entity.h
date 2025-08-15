@@ -21,8 +21,7 @@ darray_header(entity_t, entity);
     entity_add_component(world, entity, ECS_COMPONENT_ID(component))
 #define ENTITY_GET_COMPONENT(world, entity, component) \
     (component*)entity_get_component(world, entity, ECS_COMPONENT_ID(component))
-#define ENTITY_TRY_GET_COMPONENT(world, entity, component, out_value) \
-    entity_try_get_component(world, entity, ECS_COMPONENT_ID(component), (void**)out_value)
+#define ENTITY_TRY_GET_COMPONENT(world, entity, component, out_value) entity_try_get_component(world, entity, ECS_COMPONENT_ID(component), (void**)out_value)
 #define ENTITY_HAS_COMPONENT(world, entity, component) \
     entity_has_component(world, entity, ECS_COMPONENT_ID(component))
 

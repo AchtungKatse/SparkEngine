@@ -59,7 +59,9 @@
         SASSERT(index >= 0 && index < array->count, "Darray tring to pop out of bounds index: %d. Count: %d", index, array->count);                     \
         type value = array->data[index];                                                                                                                \
         if (index < array->count) {                                                                                                                     \
-            scopy_memory(&array->data[index], &array->data[index + 1], sizeof(type) * array->count - index);                                            \
+            for (u32 i = index; i < array->count - 1; i++) {                                                                                            \
+                array->data[i] = array->data[i - 1];                                                                                                    \
+            }                                                                                                                                           \
         }                                                                                                                                               \
         array->count--;                                                                                                                                 \
         return value;                                                                                                                                   \

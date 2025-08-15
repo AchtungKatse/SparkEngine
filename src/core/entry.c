@@ -12,12 +12,6 @@ int main() {
         SCRITICAL("Failed to create game.");
     }
 
-    SASSERT(game_inst.initialize, "Game is missing initialize function");
-    SASSERT(game_inst.on_resize, "Game is missing on_resize function");
-    SASSERT(game_inst.render, "Game is missing render function");
-    SASSERT(game_inst.state, "Game is missing internal state");
-    SASSERT(game_inst.update, "Game is missing update function");
-
     // Initialize
     if (!application_create(&game_inst)) {
         SCRITICAL("Failed to create application");

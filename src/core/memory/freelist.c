@@ -53,7 +53,6 @@ void* freelist_allocate(freelist_t* allocator, u64 size) {
         // Check if block can contain allocation
         if (size > block->size) {
             explicit = explicit->next;
-            SDEBUG("Block size too small: 0x%x < 0x%x", block->size, size);
             continue;
         }
 

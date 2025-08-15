@@ -59,8 +59,8 @@ s32 main(s32 argc, const char** argv) {
     u32 magic_number = 5462;
     const u64 point_count_2d = ITERATION_COUNT * SAMPLE_COUNT_2D * SAMPLE_COUNT_2D;
     const u64 point_count_3d = ITERATION_COUNT * SAMPLE_COUNT_3D * SAMPLE_COUNT_3D * SAMPLE_COUNT_3D;
-    // benchmark("Simplex 2D Float   ", benchmark_simplex_2d,          point_count_2d);
-    // benchmark("Simplex 2D Int     ", benchmark_simplex_2d_int,      point_count_2d);
+    benchmark("Simplex 2D Float   ", benchmark_simplex_2d,          point_count_2d);
+    benchmark("Simplex 2D Int     ", benchmark_simplex_2d_int,      point_count_2d);
     benchmark("Simplex 2D Int SIMD", benchmark_simplex_2d_int_simd, point_count_2d);
 
     // benchmark("Simplex 3D Float   ", benchmark_simplex_3d,          point_count_3d);
@@ -85,13 +85,13 @@ void benchmark_simplex_2d() {
 
 void benchmark_simplex_2d_int() {
     for (u32 i = 0; i < ITERATION_COUNT; i++) {
-        for (u32 x = 0; x < SAMPLE_COUNT_2D; x++) {
-            for (u32 y = 0; y < SAMPLE_COUNT_2D; y++) {
+        for (u32 x = 0, s = 0; x < SAMPLE_COUNT_2D; x++) {
+            for (u32 y = 0; y < SAMPLE_COUNT_2D; y++, s++) {
                 vec2i pos = {
                     .x = x * (s32)(65535 * .01f),
                     .y = y * (s32)(65535 * .01f),
                 };
-                simplex_2d_int(pos);
+                noise[s] = simplex_2d_int(pos);
             }
         }
     }

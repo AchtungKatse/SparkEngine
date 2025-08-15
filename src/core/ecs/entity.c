@@ -44,11 +44,11 @@ void* entity_get_component(struct ecs_world* world, entity_t entity, ecs_index c
     entity_archetype_t* archetype = &world->archetypes.data[record.archetype_index];
 
     if (!ecs_component_set_contains(&archetype->component_set, component)) {
-#ifdef SPARK_DEBUG
-        SERROR("Failed to get component '%s' from entity 0x%x.", world->components.data[component].name, entity);
-#else
-        SERROR("Failed to get component from entity 0x%x.", entity);
-#endif
+// #ifdef SPARK_DEBUG
+//         SERROR("Failed to get component '%s' from entity 0x%x.", world->components.data[component].name, entity);
+// #else
+//         SERROR("Failed to get component from entity 0x%x.", entity);
+// #endif
         return NULL;
     }
 
@@ -59,6 +59,7 @@ void* entity_get_component(struct ecs_world* world, entity_t entity, ecs_index c
 }
 
 b8 entity_try_get_component(struct ecs_world* world, entity_t entity, ecs_index component, void** out_data) {
+    SASSERT(entity >= 0 && entity < world->records.count, "Cannot access invalid entity %d. 0 <= %d < %d (entity / record count)", entity, entity, world->records.data->index);
     entity_record_t record = world->records.data[entity];
     entity_archetype_t* archetype = &world->archetypes.data[record.archetype_index];
 
@@ -220,57 +221,45 @@ void entity_add_transforms(ecs_world_t* world, entity_t entity, vec3 position, v
 
 
 void entity_add_child(struct ecs_world* world, entity_t parent, entity_t child) {
-    entity_parent_t* parent_component = NULL;
-
-    // Maintain linked list of children by updating previous child's next child to this child's next child
-    entity_child_t* child_data = NULL; 
-    if (ENTITY_TRY_GET_COMPONENT(world, child, entity_child_t, &child_data)) {
-        if (child_data->previous_sibling != INVALID_ID) {
-            entity_child_t* previous_sibling = ENTITY_GET_COMPONENT(world, child_data->previous_sibling, entity_child_t);
-            previous_sibling->next_sibling = child_data->next_sibling;
-        }
+    // Check if child has a parent
+    // Remove child from that parent if so
+    entity_parent_t* old_parent = ENTITY_GET_COMPONENT(world, child, entity_parent_t);
+    if (old_parent) {
+        entity_child_t* old_parent_children = ENTITY_GET_COMPONENT(world, old_parent->parent, entity_child_t);
+        darray_entity_pop(&old_parent_children->children, old_parent->self_index);
     }
 
-    // Check if this is the first child of the parent and set to next sibling
-    entity_child_t* parent_children = NULL;
-    if (ENTITY_TRY_GET_COMPONENT(world, parent_component->parent, entity_child_t, parent_children)) {
-        if (parent_children->child == child) {
-            parent_children->child = child_data->next_sibling;
-        }
+    // Get the child's parent component
+
+    // Check if new parent has a children array
+    // If so, just append the child
+    entity_child_t* children = ENTITY_GET_COMPONENT(world, parent, entity_child_t);
+    if (children) {
+        entity_parent_t parent_relationship = {
+            .parent = parent,
+            .self_index = children->children.count,
+        };
+        darray_entity_push(&children->children, child);
+        ENTITY_SET_COMPONENT(world, child, entity_parent_t, parent_relationship);
+        entity_parent_t* p;
+        ENTITY_TRY_GET_COMPONENT(world, child, entity_parent_t, &p);
+        return;
     }
-    ENTITY_SET_COMPONENT(world, child, entity_parent_t, { .parent = parent} );
 
-    // If the child has an existing parent
-    if (ENTITY_TRY_GET_COMPONENT(world, child, entity_parent_t, &parent_component)) {
-        // Override the previous parent
-        parent_component->parent = parent;
+    // Otherwise, create a new child array
+    darray_entity_t new_children;
+    darray_entity_create(4, &new_children);
+    darray_entity_push(&new_children, child);
 
-        // Set the new child data
-        entity_child_t* children = NULL;
-        if (ENTITY_TRY_GET_COMPONENT(world, parent, entity_child_t, &children)) {
-            // Update first child's previous child to this child
-            entity_child_t* current_first_child = NULL;
-            if (ENTITY_TRY_GET_COMPONENT(world, children->child, entity_child_t, &current_first_child)) {
-                current_first_child->previous_sibling = child;
-            }
+    // Set the parent's children array
+    ENTITY_SET_COMPONENT(world, parent, entity_child_t, { new_children });
 
-            // Set first child as new child
-            const entity_child_t new_child = {
-                .child = INVALID_ID,
-                .next_sibling = children->child,
-                .previous_sibling = INVALID_ID,
-            };
-            ENTITY_SET_COMPONENT(world, child, entity_child_t, new_child);
-            children->child = child;
-        } else {
-            const entity_child_t new_child = {
-                .child = INVALID_ID,
-                .next_sibling = INVALID_ID,
-                .previous_sibling = INVALID_ID,
-            };
+    // Set the child's parent component
+    entity_parent_t parent_relationship = {
+        .parent = parent,
+        .self_index = 0,
+    };
 
-            ENTITY_SET_COMPONENT(world, child, entity_child_t, new_child);
-        }
-    }
+    ENTITY_SET_COMPONENT(world, child, entity_parent_t, parent_relationship);
 }
 

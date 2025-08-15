@@ -29,7 +29,7 @@ void* dynamic_allocator_allocate(dynamic_allocator_t* allocator, u64 size) {
     // No existing allocator, try creating one.
     allocator->next_allocator = platform_allocate(sizeof(dynamic_allocator_t), true);
     dynamic_allocator_create(allocator->memory_size, allocator->next_allocator);
-        return dynamic_allocator_allocate(allocator->next_allocator, size);
+    return dynamic_allocator_allocate(allocator->next_allocator, size);
 }
 
 void dynamic_allocator_free(dynamic_allocator_t* allocator, void* data) {

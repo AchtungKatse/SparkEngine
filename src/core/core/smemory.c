@@ -128,7 +128,8 @@ pvt_sallocate(u64 size, memory_tag_t tag) {
     state_ptr.stats.total_allocated += size;
     state_ptr.stats.tagged_allocations[tag] += size;
 
-    void* block = dynamic_allocator_allocate(&state_ptr.allocator, size);
+    void* block = platform_allocate(size, true);
+    // void* block = dynamic_allocator_allocate(&state_ptr.allocator, size);
     platform_zero_memory(block, size);
     return block;
 }
@@ -153,7 +154,8 @@ pvt_spark_free(const void* block, u64 size, memory_tag_t tag) {
     state_ptr.stats.total_allocated -= size;
     state_ptr.stats.tagged_allocations[tag] -= size;
 
-    dynamic_allocator_free(&state_ptr.allocator, (void*)block);
+    // dynamic_allocator_free(&state_ptr.allocator, (void*)block);
+    platform_free((void*)block, true);
 }
 
 /**
@@ -263,20 +265,22 @@ create_tracked_allocation(u64 size, memory_tag_t tag, const char* file, u32 line
         SERROR("backtrace_symbols failed to get symbols");
     }
 
-    char* backtrace_string = dynamic_allocator_allocate(&state_ptr.allocator, 0x1000);
-    szero_memory(backtrace_string, 0x1000);
-    for (u32 i = 1, offset = 0; i < backtrace_pointer_count; i++) {
-
-        u32 p = 0;
-        while(backtrace_strings[i][p] != '(' && backtrace_strings[i][p] != ' ' && backtrace_strings[i][p] != 0) {
-            ++p;
-        }
-
-        u32 len = string_length(backtrace_strings[i]);
-        scopy_memory(backtrace_string + offset, backtrace_strings[i], len);
-        backtrace_string[offset + len - 1] = '\n';
-        offset += len;
-    }
+    // char* backtrace_string = dynamic_allocator_allocate(&state_ptr.allocator, 0x1000);
+    // char* backtrace_string = platform_allocate(0x1000, MEMORY_TAG_STRING);
+    char* backtrace_string = NULL;
+    // szero_memory(backtrace_string, 0x1000);
+    // for (u32 i = 1, offset = 0; i < backtrace_pointer_count; i++) {
+    //
+    //     u32 p = 0;
+    //     while(backtrace_strings[i][p] != '(' && backtrace_strings[i][p] != ' ' && backtrace_strings[i][p] != 0) {
+    //         ++p;
+    //     }
+    //
+    //     u32 len = string_length(backtrace_strings[i]);
+    //     scopy_memory(backtrace_string + offset, backtrace_strings[i], len);
+    //     backtrace_string[offset + len - 1] = '\n';
+    //     offset += len;
+    // }
 
     allocation_info_t info = {
         .file = file,
@@ -315,11 +319,15 @@ free_tracked_allocation(const void* block, u32 size, memory_tag_t tag) {
             //         "Expected: %lul\n\t\tGot: %ul\n\t\tFile: %s:%d\n\t\tBacktrace:\n%s", tracked_allocations[i].size, size, tracked_allocations[i].file, tracked_allocations[i].line, tracked_allocations[i].backtrace);
 
             if (tracked_allocations[i].backtrace) {
-                dynamic_allocator_free(&state_ptr.allocator, tracked_allocations[i].backtrace);
+                // dynamic_allocator_free(&state_ptr.allocator, tracked_allocations[i].backtrace);
+                platform_free(tracked_allocations[i].backtrace, true);
                 tracked_allocations[i].backtrace = NULL;
             }
 
-            scopy_memory(&tracked_allocations[i], &tracked_allocations[i + 1], (allocation_count - i) * sizeof(allocation_info_t));
+            for (u32 j = i; j < allocation_count - 1; j++) {
+                tracked_allocations[j] = tracked_allocations[j + 1];
+            }
+                // scopy_memory(&tracked_allocations[i], &tracked_allocations[i + 1], (allocation_count - i) * sizeof(allocation_info_t));
             allocation_count--;
         }
     }

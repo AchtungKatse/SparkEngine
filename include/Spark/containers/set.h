@@ -48,7 +48,10 @@
         out_set->data = sallocate(sizeof(pvt_##name##_container_t) * capacity, MEMORY_TAG_ARRAY);                \
         out_set->capacity = capacity;                                                        \
         out_set->count = 0; \
-        sset_memory(out_set->data, 0xFFFFFFFF, capacity * sizeof(pvt_##name##_container_t));                     \
+        for (u32 i = 0; i < capacity; i++) { \
+            out_set->data[i].value = INVALID_ID; \
+            out_set->data[i].index = INVALID_ID; \
+        } \
     }                                                                                        \
     void name##_destroy(name##_t* set) {                                                     \
         sfree(set->data, sizeof(pvt_##name##_container_t) * set->capacity, MEMORY_TAG_ARRAY);                    \
@@ -71,7 +74,6 @@
         if (set->data[index].value == value) { \
             return set->data[index].index; \
         } \
-        SWARN("Set does not contain value %d", value); \
         return INVALID_ID; \
     }                                                                                        \
     b8 name##_contains(name##_t* set, type value) {                                          \

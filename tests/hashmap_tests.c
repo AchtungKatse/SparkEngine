@@ -3,8 +3,9 @@
 hashmap_type(u64, hashmap_u64);
 hashmap_impl(u64, u64, hashmap_u64, hash_passthrough);
 
-b8 hashmap_test() {
-    const u32 value_count = 100000;
+int main() {
+    initialize_memory();
+    const u32 value_count = 10000;
     u64 rand_values[value_count];
     u64 rand_keys[value_count];
     for (u32 i = 0; i < value_count; i++) {
@@ -29,6 +30,6 @@ b8 hashmap_test() {
         }
     }
 
-    return true;
+    SDEBUG("Hashmap test success");
 }
 
