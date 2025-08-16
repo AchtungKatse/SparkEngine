@@ -103,7 +103,7 @@ void benchmark_simplex_2d_int_simd() {
             .x = 0,
             .y = 0,
         };
-        simplex_2d_int_simd(pos, (vec2i) {.x = SAMPLE_COUNT_2D, .y = SAMPLE_COUNT_2D}, out_noise);
+        simplex_2d_int_simd(pos, (vec2i) {.x = SAMPLE_COUNT_2D, .y = SAMPLE_COUNT_2D}, 128, out_noise);
     }
 }
 
