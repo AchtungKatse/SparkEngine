@@ -64,6 +64,7 @@ s32 dot_3d_int(const s8 vector[3], const vec3i pos) {
 // Private data
 const static s32 grad2_y[12];
 const static s32 grad2_x[12];
+const static s16 grad2_int[12][2];
 const static f32 grad2[12][2];
 const static s8 grad3[12][3];
 // const static s32 grad4[32][4];
@@ -138,30 +139,21 @@ float simplex_2d(vec2 pos) {
  */
 s32 simplex_2d_int(vec2i pos) {
     const s32 f = ((pos.x + pos.y) * (s32)(F2 * INT_ONE)) >> INT_ONE_BIT_COUNT;
-    s32 x0 = fast_floor_int(pos.x + f) >> INT_ONE_BIT_COUNT;
-    s32 y0 = fast_floor_int(pos.y + f) >> INT_ONE_BIT_COUNT;
+    s32 x0 = fast_floor_int(pos.x + f);
+    s32 y0 = fast_floor_int(pos.y + f);
 
-    const s32 i = (x0 * X_PRIME);
-    const s32 j = (y0 * Y_PRIME);
+    const s32 i = (x0 >> INT_ONE_BIT_COUNT) * X_PRIME;
+    const s32 j = (y0 >> INT_ONE_BIT_COUNT) * Y_PRIME;
 
-    const s32 g = ((s32)(INT_ONE * G2) * ((x0 + y0) * INT_ONE)) >> INT_ONE_BIT_COUNT;
-    x0 = pos.x - x0 - g;
-    y0 = pos.y - y0 - g;
+    const s32 g = ((s32)(INT_ONE * G2) * (x0 + y0)) >> INT_ONE_BIT_COUNT;
+    x0 = pos.x - (x0 - g);
+    y0 = pos.y - (y0 - g);
 
-        //     mask32v i1 = x0 > y0;
-        // //mask32v j1 = ~i1; //NMasked funcs
-        //
-        // float32v x1 = FS_MaskedSub_f32( x0, float32v( 1.f ), i1 ) + float32v( G2 );
-        // float32v y1 = FS_NMaskedSub_f32( y0, float32v( 1.f ), i1 ) + float32v( G2 );
-        // float32v x2 = x0 + float32v( (G2 * 2) - 1 );
-        // float32v y2 = y0 + float32v( (G2 * 2) - 1 );
-        //
-    const s32 i1 = x0 > y0;
+    const b8 i1 = x0 > y0;
     s32 x1 = i1 ? x0 - INT_ONE : x0;
-    s32 y1 = i1 ? y0 - INT_ONE : y0;
+    s32 y1 = i1 ? y0 : y0 - INT_ONE;
     x1 += (s32)(INT_ONE * G2);
     y1 += (s32)(INT_ONE * G2);
-
 
     s32 x2 = x0 + (s32)(INT_ONE * (G2 * 2 - 1));
     s32 y2 = y0 + (s32)(INT_ONE * (G2 * 2 - 1));
@@ -170,23 +162,20 @@ s32 simplex_2d_int(vec2i pos) {
     const s32 t1 = calculate_t(x1, y1);
     const s32 t2 = calculate_t(x2, y2);
 
-    const s32 seed = 0;
+    const s32 seed = 4;
     const s32 n0 = get_gradient_dot_fancy(hash_primes(seed, 2, (s32[]) {i, j}), x0, y0);
     const s32 n1 = get_gradient_dot_fancy(hash_primes(seed, 2, (s32[]) {
                 i1 ? i + X_PRIME : i,
-                i1 ? j + Y_PRIME : j,
+                i1 ? j : j + Y_PRIME,
                 }), x1, y1);
     const s32 n2 = get_gradient_dot_fancy(hash_primes(seed, 2, (s32[]) {
                 i + X_PRIME,
                 j + Y_PRIME
                 }), x2, y2);
 
-    s32 noise = ((n0 * t0) >> 16) + ((n1 * t1) >> 16) + ((n2 * t2) >> 16);
-    // SDEBUG("X: %d, Y: %d", pos.x, pos.y);
-    // SDEBUG("\tI: %d, J: %d, i1: %d, T0: %d, T1: %d, T2: %d, N0: %d, N1: %d, N2: %d, Noise: %d (%f)", i, j, i1, t0, t1, t2, n0, n1, n2, noise, (float)noise / INT_ONE);
-    // SDEBUG("\tX0: %d, X1: %d, X2: %d", x0, x1, x2);
-    // SDEBUG("\tY0: %d, Y1: %d, Y2: %d", y0, y1, y2);
-    // SDEBUG("\tF: %d, G: %d", f, g);
+    s32 noise =  ((n0 * t0) >> 16) + ((n1 * t1) >> 16) + ((n2 * t2) >> 16);
+    noise *= ((s32)38.283687591552734375 * INT_ONE);
+    noise >>= INT_ONE_BIT_COUNT;
     return noise;
 }
 
@@ -199,7 +188,7 @@ s32 simplex_2d_int(vec2i pos) {
 void simplex_2d_int_simd(vec2i pos, vec2i size, s32* out_noise) {
     const u32 simd_size = sizeof(__m256i) / 4;
     for (u32 _x = 0, index = 0; _x < size.x / simd_size; _x++) {
-        for (u32 _y = 0; _y < size.y; _y++, index += simd_size) {
+        for (u32 _y = 0; _y < size.y; _y++, index ++) {
             const static s32 _add[8] = { 7, 6, 5, 4, 3, 2, 1, 0 };
             const __m256i add = _mm256_stream_load_si256((const void*)_add);
             const __m256i x = _mm256_add_epi32(add, _mm256_set1_epi32(pos.x));
@@ -265,7 +254,8 @@ void simplex_2d_int_simd(vec2i pos, vec2i size, s32* out_noise) {
             noise = _mm256_mul_epi32(noise, _mm256_set1_epi32(50 * INT_ONE));
             noise = _mm256_set1_epi32(50 * INT_ONE);
 
-            _mm256_store_si256(((void*)out_noise + sizeof(__m256i) * index), noise);
+            u32 offset = sizeof(s32) * index;
+            _mm256_store_si256((__m256i*)out_noise + index, noise);
         }
     }
 }
@@ -492,11 +482,14 @@ s32 simplex_3d_int(vec3i pos) {
 // Helper functions
 // ====================
 SINLINE s32 calculate_t(s32 x, s32 y) {
-    x *= x;
-    y *= y;
-    x >>= INT_ONE_BIT_COUNT;
-    y >>= INT_ONE_BIT_COUNT;
-    s32 t = INT_ONE / 2 - (x + y);
+        //     float32v t0 = FS_FNMulAdd_f32( x0, x0, FS_FNMulAdd_f32( y0, y0, float32v( 0.5f ) ) );
+        //
+        // t0 = FS_Max_f32( t0, float32v( 0 ) );
+        //
+        // t0 *= t0; t0 *= t0;
+    s32 _y = (-(y * y)) >> INT_ONE_BIT_COUNT;
+    s32 _x = (-(x * x)) >> INT_ONE_BIT_COUNT;
+    s32 t = _x + _y + INT_ONE / 2;
     if (t <= 0) {
         return 0;
     }
@@ -592,7 +585,7 @@ SINLINE s32 get_gradient_dot_fancy(s32 hash, s32 fX, s32 fY ) {
         a *= (s32)(INT_ONE * S_SQRT_THREE);
         a >>= INT_ONE_BIT_COUNT;
     }
-    b = b * amul2;
+    b = b * !amul2;
 
     // Bit-8 = Flip sign of a + b
     return (a + b);
@@ -641,6 +634,11 @@ const static s32 grad2_y[12] = {
     1,1,-1,-1,
     0,0,0,0,
     1,-1,1,-1
+};
+const static s16 grad2_int[12][2] = {
+    {INT_ONE,INT_ONE},{-INT_ONE,INT_ONE},{INT_ONE,-INT_ONE},{-INT_ONE,-INT_ONE},
+    {INT_ONE,0},{-INT_ONE,0},{INT_ONE,0},{-INT_ONE,0},
+    {0,INT_ONE},{0,-INT_ONE},{0,INT_ONE},{0,-INT_ONE}
 };
 const static f32 grad2[12][2] = {
     {1,1},{-1,1},{1,-1},{-1,-1},

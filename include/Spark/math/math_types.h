@@ -8,8 +8,8 @@ typedef union vec2 {
 } vec2;
 
 typedef struct vec2i {
-    u32 x;
-    u32 y;
+    s32 x;
+    s32 y;
 } vec2i;
 
 typedef union vec3 {
