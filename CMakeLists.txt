@@ -94,6 +94,8 @@ set(ASSIMP_INSTALL OFF)
 set(ASSIMP_INSTALL_PDB OFF)
 set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
 set(ASSIMP_BUILD_ALL_INPORTERS_BY_DEFAULT OFF)
+set(ASSIMP_BUILD_GLTF_INPORTER ON)
+set(ASSIMP_BUILD_GLTF2_INPORTER ON)
 target_compile_options(resource_copy PRIVATE "-g" "-O2" "-flto=none")
 
 add_subdirectory(dependencies/assimp)
