@@ -114,8 +114,8 @@ s32 simplex_2d_int(const s32 seed, vec2i pos) {
     s32 y0 = fast_floor_int(pos.y + f);
 
     const s32 g = ((s32)(INT_ONE * G2) * (x0 + y0)) >> INT_ONE_BIT_COUNT;
-    const s32 i = x0 * X_PRIME;
-    const s32 j = y0 * Y_PRIME;
+    const s32 i = (x0 >> INT_ONE_BIT_COUNT) * X_PRIME;
+    const s32 j = (y0 >> INT_ONE_BIT_COUNT) * Y_PRIME;
 
     x0 = pos.x - (x0 - g);
     y0 = pos.y - (y0 - g);
@@ -166,10 +166,11 @@ s32 simplex_2d_int(const s32 seed, vec2i pos) {
  * @return Simplex noise value
  */
 void simplex_2d_int_simd(s32 seed, vec2i pos, vec2i size, s32 scale, s32* out_noise) {
+    // Constants
     const __m256i scale_simd = _mm256_set1_epi32(scale);
+    const s32 add_vector[8] __attribute__((aligned (32))) = { 0, 1, 2, 3, 4, 5, 6, 7 };
     const u32 simd_size = sizeof(__m256i) / 4;
 
-    const s32 add_vector[8]   = { 0, 1, 2, 3, 4, 5, 6, 7 };
     __m256i add = _mm256_stream_load_si256((const void*)add_vector);
             add = _mm256_mullo_epi32(add, scale_simd);
 
@@ -178,7 +179,7 @@ void simplex_2d_int_simd(s32 seed, vec2i pos, vec2i size, s32 scale, s32* out_no
             const __m256i x = _mm256_add_epi32(add, _mm256_set1_epi32((pos.x + _x) * scale));
             const __m256i y = _mm256_set1_epi32((pos.y + _y) * scale);
 
-            __m256i* output = ((__m256i*)out_noise) + index;
+            __m256i* output = (__m256i*)out_noise + index;
             simplex_2d_int_simd_row(seed, x, y, output);
         }
     }
@@ -204,8 +205,8 @@ void simplex_2d_int_simd_row(const u32 seed, __m256i x, __m256i y, __m256i* outp
     __m256i y0 = _mm256_add_epi32(y, f);
             y0 = _mm256_and_si256(y0, INT_ONE_FLOOR_MASK);
 
-    __m256i i = _mm256_mullo_epi32(x0, x_prime);
-    __m256i j = _mm256_mullo_epi32(y0, y_prime);
+    __m256i i = _mm256_mullo_epi32(_mm256_srai_epi32(x0, INT_ONE_BIT_COUNT), x_prime);
+    __m256i j = _mm256_mullo_epi32(_mm256_srai_epi32(y0, INT_ONE_BIT_COUNT), y_prime);
 
     __m256i g = _mm256_add_epi32(x0, y0);
             g = _mm256_mullo_epi32(SIMD_G2, g);
@@ -217,6 +218,8 @@ void simplex_2d_int_simd_row(const u32 seed, __m256i x, __m256i y, __m256i* outp
 
     __m256i i1_inverse = _mm256_cmpgt_epi32(x0, y0);
 
+    // s32 x1 = i1 ? x0 - INT_ONE : x0;
+    // s32 y1 = i1 ? y0           : y0 - INT_ONE;
     __m256i x1 = _mm256_blendv_epi8(x0, _mm256_sub_epi32(x0, SIMD_INT_ONE), i1_inverse);
             x1 = _mm256_add_epi32(x1, SIMD_G2);
     __m256i y1 = _mm256_blendv_epi8(_mm256_sub_epi32(y0, SIMD_INT_ONE), y0, i1_inverse);
@@ -277,6 +280,9 @@ s32 calculate_t(s32 x, s32 y) {
 }
 
 __m256i simd_calculate_t(__m256i x, __m256i y) {
+    __m256i SIMD_HALF = _mm256_set1_epi32(INT_ONE / 2);
+    const __m256i SIMD_ZERO = _mm256_set1_epi32(0);
+
     // TODO: Faster negate
     __m256i negative = _mm256_set1_epi32(-1);
     __m256i x_sqr = _mm256_mullo_epi32(x, x);
@@ -285,12 +291,10 @@ __m256i simd_calculate_t(__m256i x, __m256i y) {
     __m256i y_sqr = _mm256_mullo_epi32(y, y);
     y_sqr = _mm256_mullo_epi32(y_sqr, negative);
     y_sqr = _mm256_srai_epi32(y_sqr, INT_ONE_BIT_COUNT);
-    __m256i SIMD_HALF = _mm256_set1_epi32(INT_ONE / 2);
+
     __m256i t = _mm256_add_epi32(SIMD_HALF, _mm256_add_epi32(x_sqr, y_sqr));
-
-
-    const __m256i SIMD_ZERO = _mm256_set1_epi32(0);
     __m256i mask = _mm256_cmpgt_epi32(t, SIMD_ZERO);
+
     t = _mm256_blendv_epi8(SIMD_ZERO, t, mask);
 
     t = _mm256_mullo_epi32(t, t);
@@ -302,27 +306,26 @@ __m256i simd_calculate_t(__m256i x, __m256i y) {
 }
 
 s32 hash_primes(u32 seed, s32 a, s32 b) {
-    s32 hash = seed ^ a ^ b;
+    s32 hash = seed ^ (a ^ b);
 
     hash *= 0x27d4eb2d;
     return (hash >> 15) ^ hash;
 }
 
 __m256i simd_hash_primes(u64 seed, __m256i a, __m256i b) {
-    __m256i hash = _mm256_set1_epi32(seed);
-    hash = _mm256_xor_si256(hash, a);
-    hash = _mm256_xor_si256(hash, b);
-
     const __m256i mul = _mm256_set1_epi32(0x27d4eb2d);
+
+    __m256i hash = _mm256_xor_si256(_mm256_set1_epi32(seed), _mm256_xor_si256(a, b));
+
     hash = _mm256_mullo_epi32(hash, mul);
-    hash = _mm256_xor_si256(hash, _mm256_srli_epi32(hash, 15));
+    hash = _mm256_xor_si256(hash, _mm256_srai_epi32(hash, 15));
     return hash;
 }
 
 s32 get_gradient_dot_fancy(s32 hash, s32 fX, s32 fY ) {
     const s32 mul = INT_ONE / 1.3333333333333333333333f;
-    s32 index = (hash & 0x3FFFFF) * mul;
-    index >>= INT_ONE_BIT_COUNT;
+
+    s32 index = ((hash & 0x3FFFFF) * mul) >> INT_ONE_BIT_COUNT;
 
     // Bit-4 = Choose X Y ordering
     s32 xy = (index & ( 1 << 2 )) != 0;
@@ -353,12 +356,13 @@ s32 get_gradient_dot_fancy(s32 hash, s32 fX, s32 fY ) {
 }
 
 __m256i simd_get_gradient_dot_fancy(__m256i hash, __m256i fX, __m256i fY) {
+    __m256i SIMD_ZERO = _mm256_set1_epi32(0);
+
     __m256i index = _mm256_mullo_epi32(_mm256_and_si256(hash, _mm256_set1_epi32(0x3FFFFF)), _mm256_set1_epi32((s32)(INT_ONE / 1.3333333333333333f)));
     index = _mm256_srai_epi32(index, INT_ONE_BIT_COUNT);
 
     // Bit-4 = Choose X Y ordering
     __m256i xy = _mm256_and_si256(index, _mm256_set1_epi32(1 << 2));
-    __m256i SIMD_ZERO = _mm256_set1_epi32(0);
     xy = _mm256_cmpeq_epi32(xy, SIMD_ZERO);
 
     __m256i a = _mm256_blendv_epi8(fY, fX, xy);
