@@ -331,10 +331,8 @@ b8 vulkan_renderer_draw_frame(render_packet_t* packet) {
         u32 material = geometry->material->internal_index;
 
         // Just modify command if its the same exact call
-        if (geometry->mesh.internal_index == old_mesh && material == old_material) {
-            command.instanceCount++;
-            continue;
-        } else if (command.instanceCount > 0) {
+        b8 is_instance = geometry->mesh.internal_index == old_mesh && material == old_material;
+        if (!is_instance || i == packet->geometry_count - 1) {
             // Otherwise, its a new command and needs to be submitted
             draw_info = 
                 (indirect_draw_info_t) {
@@ -356,6 +354,10 @@ b8 vulkan_renderer_draw_frame(render_packet_t* packet) {
             darray_VkDrawIndexedIndirectCommand_push(&indirect_info->commands, command);
             darray_indirect_draw_info_push(&indirect_info->draws, draw_info);
         }
+        if (is_instance) {
+            command.instanceCount++;
+            continue;
+        } 
 
         old_material = geometry->material->internal_index;
         old_mesh = geometry->mesh.internal_index;

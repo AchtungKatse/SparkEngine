@@ -1,4 +1,5 @@
 // Linux platform layer.
+#include "Spark/math/math_types.h"
 #include <xcb/xproto.h>
 #ifdef SPARK_PLATFORM_LINUX
 
@@ -638,4 +639,10 @@ keycode_t translate_keycode(u32 x_keycode) {
             return 0;
     }
 }
+
+void platform_set_cursor_position(platform_state_t* plat_state, s16 x, s16 y) {
+    internal_state* state = (internal_state*)plat_state->internal_state;
+    // xcb_warp_pointer(state->connection, XCB_NONE, XCB_NONE, 0, 0, 0, 0, x, y);
+}
+
 #endif

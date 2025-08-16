@@ -249,6 +249,7 @@ application_run() {
         }
 
         input_update(delta_time);
+        platform_set_cursor_position(&app_state->platform, 256, 256);
     }
 
     STRACE("App shutting down");

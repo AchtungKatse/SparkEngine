@@ -27,3 +27,5 @@ void platform_console_write_error(const char* message, u8 color);
 
 f64 platform_get_absolute_time();
 void platform_sleep(u64 ms);
+
+void platform_set_cursor_position(platform_state_t* plat_state, s16 x, s16 y);

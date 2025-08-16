@@ -148,7 +148,9 @@ void render_cameras(ecs_iterator_t* iterator) {
         //     SDEBUG("Rendering entity %d at distance %f", e, distance);
         // }
 
-        renderer_draw_frame(&packet);
+        if (packet.geometry_count > 0) {
+            renderer_draw_frame(&packet);
+        }
         darray_geometry_render_data_clear(&render_state.render_data);
     }
 }
@@ -168,7 +170,7 @@ void render_entities(ecs_iterator_t* iterator) {
         };
         if (!frustum_contains_aabb(&render_state.view_frustum, bounds[i], geometry_pos) &&
                 vec3_distance_sqr(geometry_pos, render_state.camera_pos) > 30 * 30) {
-            continue;
+            // continue;
         }
 
         geometry_render_data_t render_data = {
